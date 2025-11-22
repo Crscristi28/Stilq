@@ -65,7 +65,7 @@ const MessageItem = ({
 
   // Don't render content if it's a placeholder waiting for text.
   if (msg.role === Role.MODEL && msg.isStreaming && (!msg.text || msg.text.length === 0)) {
-      return <div className="h-0 w-0 overflow-hidden" />;
+      return null;
   }
   
   const isUser = msg.role === Role.USER;
@@ -171,13 +171,15 @@ const MessageItem = ({
             </div>
 
             {/* Timestamp */}
+            {!msg.isStreaming && (
             <div className={`text-[10px] text-gray-400 dark:text-gray-600 select-none ${isUser ? 'self-end mr-1' : 'ml-1'}`}>
                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 {msg.error && <span className="text-red-500 ml-2">Failed to send</span>}
             </div>
+            )}
 
             {/* Action Bar - AI Messages */}
-            {!isUser && !msg.error && (
+            {!isUser && !msg.error && !msg.isStreaming && (
                 <div className="flex items-center gap-1 mt-1 ml-1 text-gray-400 transition-opacity duration-200 opacity-100 md:opacity-0 md:group-hover:opacity-100">
                   <button
                       onClick={() => onHandleCopy(msg.text, msg.id)}
@@ -265,7 +267,7 @@ const MessageItem = ({
             )}
 
             {/* Suggestion Chips */}
-            {!isUser && !msg.error && msg.suggestions && msg.suggestions.length > 0 && (
+            {!isUser && !msg.error && !msg.isStreaming && msg.suggestions && msg.suggestions.length > 0 && (
                <div className="flex flex-wrap gap-2 mt-1 ml-2 animate-slide-up">
                   {msg.suggestions.map((suggestion: string, idx: number) => (
                      <button
