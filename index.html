@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content" />
+    <meta name="theme-color" content="#0e0e10" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>Elora</title>
+    <script type="importmap">
+    {
+      "imports": {
+        "remark-gfm": "https://aistudiocdn.com/remark-gfm@^4.0.1",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+        "react-syntax-highlighter": "https://aistudiocdn.com/react-syntax-highlighter@^16.1.0",
+        "react-syntax-highlighter/": "https://aistudiocdn.com/react-syntax-highlighter@^16.1.0/",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+        "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+        "react-virtuoso": "https://aistudiocdn.com/react-virtuoso@^4.12.0",
+        "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+      }
+    }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              gray: {
+                750: '#2d2e33',
+                850: '#1a1b1e',
+                950: '#0e0e10',
+              },
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.3s ease-out',
+              'slide-up': 'slideUp 0.4s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <script>
+      // Immediate theme initialization to prevent FOUC
+      try {
+        const savedSettings = localStorage.getItem('elora_settings_v1');
+        const theme = savedSettings ? JSON.parse(savedSettings).theme : 'dark';
+        
+        if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0e0e10');
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    </script>
+    <style>
+      /* Lock body scroll to prevent iOS rubber banding */
+      html, body {
+        position: fixed;
+        width: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      body {
+        background-color: #ffffff; /* Light mode default */
+        color: #111827;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .dark body {
+        background-color: #0e0e10; /* Dark mode */
+        color: #f3f4f6;
+      }
+      /* Custom Scrollbar for non-mobile */
+      @media (min-width: 768px) {
+        ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: #e5e7eb; /* Light mode thumb */
+          border-radius: 4px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+          background: #2d2e33; /* Dark mode thumb */
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #d1d5db;
+        }
+        .dark ::-webkit-scrollbar-thumb:hover {
+          background: #3d3e44;
+        }
+      }
+      /* Markdown Content Styles */
+      .prose pre {
+        background-color: #1e1e1e !important;
+        margin: 0 !important;
+        border-radius: 0 0 0.5rem 0.5rem !important;
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
+      .pt-safe {
+        padding-top: env(safe-area-inset-top);
+      }
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .safe-area-bottom {
+        margin-bottom: env(safe-area-inset-bottom);
+      }
+    </style>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
