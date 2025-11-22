@@ -73,72 +73,74 @@ const MessageItem = ({
   // --- USER MESSAGE LAYOUT (BUBBLE) ---
   if (isUser) {
     return (
-      <div className="flex justify-end w-full px-4 py-4 group">
-        <div className="relative flex flex-col items-end gap-1 max-w-[85%] md:max-w-[75%]">
-            {/* Left Side Actions (Absolute) */}
-            <div className="absolute right-full top-0 mr-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-               <button 
-                   onClick={() => onStartEditing(msg)}
-                   className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                   title="Edit"
-               >
-                   <Pencil size={14}/>
-               </button>
-               <button 
-                   onClick={() => onHandleReply(msg)}
-                   className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                   title="Reply"
-               >
-                   <Reply size={14}/>
-               </button>
-            </div>
+      <div className="w-full py-4 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+        <div className="max-w-4xl mx-auto w-full px-5 md:px-8 flex justify-end">
+            <div className="relative flex flex-col items-end gap-1 max-w-[85%] md:max-w-[75%]">
+                {/* Left Side Actions (Absolute) */}
+                <div className="absolute right-full top-0 mr-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                   <button 
+                       onClick={() => onStartEditing(msg)}
+                       className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                       title="Edit"
+                   >
+                       <Pencil size={14}/>
+                   </button>
+                   <button 
+                       onClick={() => onHandleReply(msg)}
+                       className="p-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                       title="Reply"
+                   >
+                       <Reply size={14}/>
+                   </button>
+                </div>
 
-            {/* Bubble */}
-            <div className="relative px-5 py-3.5 bg-[#2d2e33] text-white rounded-[24px] rounded-tr-sm shadow-sm">
-                 {/* Attachments */}
-                 {msg.attachments && msg.attachments.length > 0 && (
-                    <div className="mb-3 flex flex-wrap gap-2 justify-end">
-                        {msg.attachments.map((att: any, idx: number) => (
-                            <div key={idx} className="relative group">
-                                {att.mimeType.startsWith('image/') ? (
-                                    <img src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`} alt="att" className="h-20 w-20 object-cover rounded-lg opacity-90" />
-                                ) : (
-                                    <div className="flex items-center gap-2 p-2 bg-black/20 rounded-lg">
-                                        {React.createElement(getFileIcon(att.mimeType), { size: 16, className: "text-gray-300" })}
-                                        <span className="text-xs truncate max-w-[80px]">{att.name}</span>
-                                    </div>
-                                )}
+                {/* Bubble - FIXED COLORS FOR LIGHT/DARK MODE */}
+                <div className="relative px-5 py-3.5 bg-gray-100 dark:bg-[#2d2e33] text-gray-900 dark:text-white rounded-[24px] rounded-tr-sm shadow-sm">
+                     {/* Attachments */}
+                     {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="mb-3 flex flex-wrap gap-2 justify-end">
+                            {msg.attachments.map((att: any, idx: number) => (
+                                <div key={idx} className="relative group">
+                                    {att.mimeType.startsWith('image/') ? (
+                                        <img src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`} alt="att" className="h-20 w-20 object-cover rounded-lg opacity-90" />
+                                    ) : (
+                                        <div className="flex items-center gap-2 p-2 bg-white/50 dark:bg-black/20 rounded-lg">
+                                            {React.createElement(getFileIcon(att.mimeType), { size: 16, className: "text-gray-500 dark:text-gray-300" })}
+                                            <span className="text-xs truncate max-w-[80px]">{att.name}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* Text */}
+                    <div className="text-sm md:text-base leading-relaxed whitespace-pre-wrap font-sans">
+                        {editingId === msg.id ? (
+                            <div className="min-w-[200px]">
+                                <textarea 
+                                    value={editText} 
+                                    onChange={(e) => onSetEditText(e.target.value)} 
+                                    className="w-full bg-transparent border-none focus:ring-0 text-gray-900 dark:text-white resize-none" 
+                                    rows={3}
+                                    autoFocus
+                                />
+                                <div className="flex justify-end gap-2 mt-2">
+                                    <button onClick={onCancelEditing} className="text-xs opacity-70">Cancel</button>
+                                    <button onClick={() => onSaveEdit(msg.id)} className="text-xs font-bold text-blue-600 dark:text-blue-300">Save</button>
+                                </div>
                             </div>
-                        ))}
+                        ) : msg.text}
+                    </div>
+                </div>
+                
+                {/* Timestamp */}
+                {!msg.isStreaming && (
+                    <div className="text-[10px] text-gray-400 pr-1">
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                 )}
-                
-                {/* Text */}
-                <div className="text-sm md:text-base leading-relaxed whitespace-pre-wrap font-sans">
-                    {editingId === msg.id ? (
-                        <div className="min-w-[200px]">
-                            <textarea 
-                                value={editText} 
-                                onChange={(e) => onSetEditText(e.target.value)} 
-                                className="w-full bg-transparent border-none focus:ring-0 text-white resize-none" 
-                                rows={3}
-                                autoFocus
-                            />
-                            <div className="flex justify-end gap-2 mt-2">
-                                <button onClick={onCancelEditing} className="text-xs opacity-70">Cancel</button>
-                                <button onClick={() => onSaveEdit(msg.id)} className="text-xs font-bold text-blue-300">Save</button>
-                            </div>
-                        </div>
-                    ) : msg.text}
-                </div>
             </div>
-            
-            {/* Timestamp */}
-            {!msg.isStreaming && (
-                <div className="text-[10px] text-gray-400 pr-1">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-            )}
         </div>
       </div>
     );
