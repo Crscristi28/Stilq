@@ -363,12 +363,16 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
         }
     }, []);
 
-    // Auto-scroll logic
+    // Auto-scroll logic - Focus Mode: user messages go to TOP
     useEffect(() => {
         if (messages.length > 0) {
-            setTimeout(() => {
-                virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'end', behavior: 'smooth' });
-            }, 100);
+            const lastMessage = messages[messages.length - 1];
+            // Only scroll when user sends a message - position it at TOP
+            if (lastMessage.role === Role.USER) {
+                setTimeout(() => {
+                    virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'start', behavior: 'smooth' });
+                }, 100);
+            }
         }
     }, [messages.length]);
 
@@ -489,7 +493,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
             data={messages}
             className="flex-1 w-full scrollbar-hide" // Use flex-1 to fill remaining space correctly
             atBottomThreshold={60}
-            followOutput="smooth"
+            followOutput={false}
             itemContent={(index, msg) => (
                 <MessageItem
                     key={msg.id}
@@ -519,7 +523,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onEdit,
             components={{
                 Header: () => <div className="h-32" />,
                 Footer: () => (
-                  <div className="pb-4">
+                  <div style={{ height: '55vh' }}>
                     {/* Thinking Indicator */}
                     {showThinkingDots && (
                        <div className="max-w-4xl mx-auto w-full px-5 py-6">

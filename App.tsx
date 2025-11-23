@@ -176,6 +176,7 @@ const App: React.FC = () => {
       let fullResponse = "";
       let foundSources: Source[] = []; // Track sources
       let fullThinking = ""; // Track thinking process
+      let firstChunk = true; // Flag to hide thinking indicator on first chunk
 
       // Clear any existing debounce timer before starting a new stream
       if (debounceTimerRef.current) {
@@ -185,6 +186,12 @@ const App: React.FC = () => {
       await streamChatResponse(
         messages, finalText, attachments, selectedModel, settings,
         (chunk) => {
+          // Hide thinking indicator as soon as first chunk arrives
+          if (firstChunk) {
+            setIsLoading(false);
+            firstChunk = false;
+          }
+
           fullResponse += chunk;
 
           // Update LOCAL state immediately for smooth UI streaming
@@ -237,15 +244,12 @@ const App: React.FC = () => {
       setStreamingMessage(null);
 
       // Perform one final, guaranteed write with the complete response AND sources AND thinking
-      await updateMessageInDb(sessionId, newBotMessageId, { 
-          text: fullResponse, 
+      await updateMessageInDb(sessionId, newBotMessageId, {
+          text: fullResponse,
           isStreaming: false,
           sources: foundSources,
           thinking: fullThinking
       });
-
-      // Turn off loading indicator BEFORE generating suggestions (prevents thinking dots)
-      setIsLoading(false);
 
       // Generate suggestions quietly in background (no loading indicator, no scroll jump)
       if (!fullResponse.includes("data:image") && fullResponse.length > 50) {
