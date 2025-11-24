@@ -150,7 +150,7 @@ const MessageItem = ({
                 {/* 2. Text Bubble (Only if text exists) */}
                 {msg.text && (
                     <div className="relative px-5 py-3.5 bg-gray-100 dark:bg-[#2d2e33] text-gray-900 dark:text-white rounded-[24px] rounded-tr-sm shadow-sm">
-                        <div className="text-sm md:text-base leading-relaxed whitespace-pre-wrap font-sans">
+                        <div className="text-sm md:text-base leading-relaxed font-sans">
                             {editingId === msg.id ? (
                                 <div className="min-w-[200px]">
                                     <textarea
@@ -165,7 +165,7 @@ const MessageItem = ({
                                         <button onClick={() => onSaveEdit(msg.id)} className="text-xs font-bold text-blue-600 dark:text-blue-300">Save</button>
                                     </div>
                                 </div>
-                            ) : msg.text}
+                            ) : <MarkdownRenderer content={msg.text} />}
                         </div>
                     </div>
                 )}

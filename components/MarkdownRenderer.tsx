@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, Download } from 'lucide-react';
+import { Copy, Check, Download, Square, CheckSquare } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
@@ -74,26 +77,22 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   return (
     <div className="prose prose-sm max-w-none dark:prose-invert leading-7">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: true }]]}
+        rehypePlugins={[rehypeKatex]}
         urlTransform={(value) => value} 
         components={{
-          code({ node, inline, className, children, ...props }: any) {
+          code({ node, className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');
-            
-            // Standard Markdown logic:
-            // If inline=true -> It's `code` (single backtick)
-            // If inline=false -> It's ```code``` (triple backtick block)
+            const hasNewline = String(children).includes('\n');
 
-            if (!inline && match) {
-              return <CodeBlock language={match[1]} children={children} {...props} />;
-            } else if (!inline) {
-               // Block code without language specified
-               return <CodeBlock language="text" children={children} {...props} />;
+            // Block code: has language specifier OR contains newlines
+            if (match || hasNewline) {
+              return <CodeBlock language={match?.[1] || 'text'} children={children} {...props} />;
             }
 
             // Inline code styling
             return (
-              <code {...props} className={`${className || ''} bg-gray-200 dark:bg-white/10 px-1.5 py-0.5 rounded-md text-gray-800 dark:text-gray-200 font-mono text-[0.85em] border border-gray-300 dark:border-white/10 align-middle whitespace-nowrap`}>
+              <code {...props} className={`${className || ''} bg-gray-200 dark:bg-white/10 px-1.5 py-0.5 rounded-md text-gray-800 dark:text-gray-200 font-mono text-[0.85em] border border-gray-300 dark:border-white/10 align-middle`}>
                 {children}
               </code>
             );
@@ -148,6 +147,84 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
          ),
          td: ({ node, ...props }) => (
             <td {...props} className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap" />
+         ),
+         del: ({ node, ...props }) => (
+            <del {...props} className="line-through text-gray-500 dark:text-gray-400" />
+         ),
+         em: ({ node, ...props }) => (
+            <em {...props} className="italic text-gray-800 dark:text-gray-200" />
+         ),
+         hr: ({ node, ...props }) => (
+            <hr {...props} className="my-6 border-t border-gray-200 dark:border-gray-700" />
+         ),
+         h4: ({ node, ...props }) => (
+            <h4 {...props} className="text-base font-medium mb-2 text-gray-900 dark:text-white mt-4" />
+         ),
+         h5: ({ node, ...props }) => (
+            <h5 {...props} className="text-sm font-medium mb-1 text-gray-900 dark:text-white mt-3" />
+         ),
+         h6: ({ node, ...props }) => (
+            <h6 {...props} className="text-sm font-medium mb-1 text-gray-600 dark:text-gray-400 mt-3" />
+         ),
+         // Task list checkbox (GFM)
+         input: ({ node, checked, ...props }: any) => (
+            <span className="inline-flex items-center mr-2">
+               {checked ? (
+                  <CheckSquare size={16} className="text-green-500 dark:text-green-400" />
+               ) : (
+                  <Square size={16} className="text-gray-400 dark:text-gray-500" />
+               )}
+            </span>
+         ),
+         // Superscript (if supported)
+         sup: ({ node, ...props }) => (
+            <sup {...props} className="text-xs align-super text-gray-600 dark:text-gray-400" />
+         ),
+         // Subscript (if supported)
+         sub: ({ node, ...props }) => (
+            <sub {...props} className="text-xs align-sub text-gray-600 dark:text-gray-400" />
+         ),
+         // Preformatted text
+         pre: ({ node, children, ...props }) => (
+            <>{children}</>
+         ),
+         // Abbreviation
+         abbr: ({ node, ...props }) => (
+            <abbr {...props} className="underline decoration-dotted cursor-help text-gray-800 dark:text-gray-200" />
+         ),
+         // Keyboard input
+         kbd: ({ node, ...props }) => (
+            <kbd {...props} className="px-1.5 py-0.5 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-sm text-gray-800 dark:text-gray-200" />
+         ),
+         // Mark/highlight
+         mark: ({ node, ...props }) => (
+            <mark {...props} className="bg-yellow-200 dark:bg-yellow-500/30 px-0.5 rounded text-gray-900 dark:text-gray-100" />
+         ),
+         // Definition list
+         dl: ({ node, ...props }) => (
+            <dl {...props} className="my-4 space-y-2" />
+         ),
+         dt: ({ node, ...props }) => (
+            <dt {...props} className="font-semibold text-gray-900 dark:text-white" />
+         ),
+         dd: ({ node, ...props }) => (
+            <dd {...props} className="ml-4 text-gray-700 dark:text-gray-300" />
+         ),
+         // Section
+         section: ({ node, ...props }) => (
+            <section {...props} className="my-4" />
+         ),
+         // Div fallback
+         div: ({ node, ...props }) => (
+            <div {...props} />
+         ),
+         // Span fallback
+         span: ({ node, ...props }) => (
+            <span {...props} />
+         ),
+         // Break
+         br: ({ node, ...props }) => (
+            <br {...props} />
          ),
         }}
       >

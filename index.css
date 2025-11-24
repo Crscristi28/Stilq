@@ -52,3 +52,9 @@ body {
   -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
   mask-image: linear-gradient(to right, black 90%, transparent 100%);
 }
+
+/* Markdown text wrapping - prevent overflow */
+.prose {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
