@@ -279,7 +279,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
 
   const handleSend = () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
-    
+
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -289,8 +289,8 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
     setInput('');
     setAttachments([]);
     if (textareaRef.current) {
-        textareaRef.current.style.height = '24px'; 
-        textareaRef.current.focus();
+        textareaRef.current.style.height = '24px';
+        textareaRef.current.blur();
     }
   };
 
