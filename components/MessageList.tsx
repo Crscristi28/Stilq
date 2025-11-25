@@ -126,7 +126,7 @@ const MessageItem = ({
                 </div>
             )}
 
-            <div className="relative flex flex-col items-end gap-1 max-w-[85%] md:max-w-[75%]">
+            <div className="relative flex flex-col items-end gap-1 max-w-[85%] md:max-w-[75%] min-w-0">
                 {/* Left Side Actions (Absolute) */}
                 {msg.text && (
                     <div className="absolute right-full top-0 mr-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -149,8 +149,8 @@ const MessageItem = ({
 
                 {/* 2. Text Bubble (Only if text exists) */}
                 {msg.text && (
-                    <div className="relative px-5 py-3.5 bg-gray-100 dark:bg-[#2d2e33] text-gray-900 dark:text-white rounded-[24px] rounded-tr-sm shadow-sm">
-                        <div className="text-sm md:text-base leading-relaxed font-sans">
+                    <div className="relative px-5 py-3.5 bg-gray-100 dark:bg-[#2d2e33] text-gray-900 dark:text-white rounded-[24px] rounded-tr-sm shadow-sm max-w-full overflow-hidden">
+                        <div className="text-sm md:text-base leading-relaxed font-sans overflow-x-auto">
                             {editingId === msg.id ? (
                                 <div className="min-w-[200px]">
                                     <textarea

@@ -129,8 +129,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
             <blockquote {...props} className="border-l-4 border-blue-500/30 dark:border-blue-500/50 pl-4 py-1 italic text-gray-600 dark:text-gray-400 my-4 bg-gray-50 dark:bg-white/5 rounded-r-lg" />
          ),
          table: ({ node, ...props }) => (
-            <div className="overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-800">
-               <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-800" />
+            <div className="overflow-x-auto my-4">
+               <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 rounded-lg border border-gray-200 dark:border-gray-800" />
             </div>
          ),
          thead: ({ node, ...props }) => (
