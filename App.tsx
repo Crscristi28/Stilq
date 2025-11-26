@@ -41,6 +41,7 @@ const App: React.FC = () => {
   // Refs for Smooth Streaming & Data Safety
   // These exist outside the render cycle to handle high-frequency updates
   const streamBufferRef = useRef<string>(""); 
+  const displayedBufferRef = useRef<string>(""); // NEW: Tracks what is currently on screen (Smooth Typing)
   const streamThinkingRef = useRef<string>("");
   const streamSourcesRef = useRef<Source[]>([]);
   const streamSuggestionsRef = useRef<string[]>([]);
@@ -239,19 +240,41 @@ const App: React.FC = () => {
     // --- STREAMING SETUP ---
     // 1. Reset Refs
     streamBufferRef.current = "";
+    displayedBufferRef.current = ""; // Reset UI buffer
     streamThinkingRef.current = "";
     streamSourcesRef.current = [];
     streamSuggestionsRef.current = [];
     isStreamingRef.current = true;
     
-    // 2. Start Animation Loop (Smooth UI)
-    // This runs at 60fps (or whatever the screen refresh is) to update the UI
+    // 2. Start Animation Loop (Smooth UI with Token Interpolation)
     const updateUiLoop = () => {
         if (!isStreamingRef.current) return;
 
+        // --- SMOOTH TYPING ALGORITHM ---
+        const targetText = streamBufferRef.current;
+        const currentText = displayedBufferRef.current;
+
+        if (currentText.length < targetText.length) {
+            // Calculate distance to target
+            const distance = targetText.length - currentText.length;
+            
+            // Variable speed: 
+            // If distance is huge (copy-paste or fast stream), speed up (add 1/8th).
+            // If distance is small (end of stream), slow down to min 1-2 chars per frame for natural feel.
+            // Min speed 1 ensures it always eventually finishes.
+            const speed = Math.ceil(distance / 8); 
+            
+            // Append the next chunk
+            const nextChunk = targetText.slice(currentText.length, currentText.length + speed);
+            displayedBufferRef.current += nextChunk;
+        } else if (currentText.length > targetText.length) {
+            // Handle rare case where buffer might reset/shrink (safety)
+            displayedBufferRef.current = targetText;
+        }
+
         setStreamingMessage(prev => {
-            // Optimization: Only rerender if data actually changed
-            if (prev?.text === streamBufferRef.current && 
+            // Optimization: Only rerender if VISIBLE data actually changed
+            if (prev?.text === displayedBufferRef.current && 
                 prev?.thinking === streamThinkingRef.current && 
                 prev?.sources === streamSourcesRef.current &&
                 prev?.suggestions === streamSuggestionsRef.current) {
@@ -260,7 +283,7 @@ const App: React.FC = () => {
             return {
                 id: botMsgId,
                 role: Role.MODEL,
-                text: streamBufferRef.current,
+                text: displayedBufferRef.current, // Use the SMOOTH buffer
                 thinking: streamThinkingRef.current,
                 sources: streamSourcesRef.current,
                 suggestions: streamSuggestionsRef.current,
@@ -292,7 +315,7 @@ const App: React.FC = () => {
             firstChunk = false;
           }
 
-          // A. Update the Buffer (UI Loop will pick this up automatically)
+          // A. Update the NETWORK Buffer (Instant)
           streamBufferRef.current += chunk;
 
           // B. Debounce the Firestore write (Save money & writes)
