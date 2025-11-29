@@ -176,14 +176,17 @@ export const streamChat = onRequest(
         }
 
         // Configure Tools based on model
-
         const tools: any[] = isPro
             ? [
                 { googleSearch: {} },
                 { codeExecution: {} },
                 { urlContext: {} }
               ]
-            : [{ googleSearch: {} }];  // Flash: only search
+            : [{ googleSearch: {} }];
+
+        console.log(`[DEBUG] Model: ${modelId}, isPro: ${isPro}`);
+        console.log(`[DEBUG] Tools config:`, JSON.stringify(tools));
+        console.log(`[DEBUG] ThinkingConfig:`, JSON.stringify(thinkingConfig));
 
         const result = await ai.models.generateContentStream({
           model: modelId || "gemini-2.5-flash",
@@ -201,15 +204,54 @@ export const streamChat = onRequest(
         let sentMetadata = false;
 
         for await (const chunk of result) {
-          // Handle Thinking & Text parts
+          // DEBUG: Log raw chunk structure to see tool usage
           const candidates = (chunk as any).candidates;
           if (candidates && candidates.length > 0) {
              const parts = candidates[0].content?.parts;
              if (parts) {
                  for (const part of parts) {
+                     // DEBUG: Log each part type
+                     const partKeys = Object.keys(part);
+                     console.log(`[DEBUG] Part keys: ${partKeys.join(', ')}`);
+
+                     // Check for tool calls and SEND to client
+                     if ((part as any).functionCall) {
+                         console.log(`[DEBUG] FUNCTION CALL:`, JSON.stringify((part as any).functionCall));
+                     }
+                     if ((part as any).executableCode) {
+                         console.log(`[DEBUG] CODE EXECUTION:`, JSON.stringify((part as any).executableCode));
+                         // Send code to client as markdown code block
+                         const code = `\n\`\`\`python\n${(part as any).executableCode.code}\n\`\`\`\n`;
+                         fullResponseText += code;
+                         res.write(`data: ${JSON.stringify({ text: code })}\n\n`);
+                         if ((res as any).flush) (res as any).flush();
+                     }
+                     if ((part as any).codeExecutionResult) {
+                         console.log(`[DEBUG] CODE RESULT:`, JSON.stringify((part as any).codeExecutionResult));
+                         // Send result to client
+                         const output = (part as any).codeExecutionResult.output || '';
+                         const resultText = `\n**Output:**\n\`\`\`\n${output}\n\`\`\`\n`;
+                         fullResponseText += resultText;
+                         res.write(`data: ${JSON.stringify({ text: resultText })}\n\n`);
+                         if ((res as any).flush) (res as any).flush();
+                     }
+
+                    // Handle inline images from code execution (matplotlib graphs, etc.)
+                    if ((part as any).inlineData) {
+                        console.log(`[DEBUG] INLINE DATA:`, (part as any).inlineData.mimeType);
+                        const inlineData = (part as any).inlineData;
+                        const mimeType = inlineData.mimeType || 'image/png';
+                        const base64Data = inlineData.data;
+                        // Send as image event (instant display, not token-by-token)
+                        res.write(`data: ${JSON.stringify({
+                            image: { mimeType, data: base64Data }
+                        })}\n\n`);
+                        if ((res as any).flush) (res as any).flush();
+                    }
+
                      // Check if this part is a thought
                      const isThought = (part as any).thought === true;
-                     
+
                      if (isThought && part.text) {
                          res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
                          if ((res as any).flush) (res as any).flush();

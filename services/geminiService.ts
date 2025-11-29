@@ -101,6 +101,13 @@ export const streamChatResponse = async (
               onChunk(data.text);
             }
 
+            // Handle image event (instant display, not token-by-token)
+            if (data.image) {
+              const imgMarkdown = `\n![Generated Image](data:${data.image.mimeType};base64,${data.image.data})\n`;
+              fullText += imgMarkdown;
+              onChunk(imgMarkdown);
+            }
+
             if (data.sources && onSources) {
               onSources(data.sources);
             }
