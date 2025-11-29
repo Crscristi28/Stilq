@@ -1,33 +1,66 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
 import { GoogleGenAI } from "@google/genai";
 import * as admin from "firebase-admin";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 
 admin.initializeApp();
 
-// Define secret for Gemini API key
-const geminiApiKey = defineSecret("GEMINI_API_KEY");
+// =============================================================================
+// VERTEX AI CONFIGURATION
+// =============================================================================
+const VERTEX_PROJECT = "elenor-57bde";
+const VERTEX_LOCATION = "global"; // Required for Gemini 3 Pro Preview
 
-// Initialize Gemini with API key from Secret Manager
+/**
+ * Initialize Gemini with Vertex AI
+ * Uses Application Default Credentials (ADC) from Cloud Functions service account
+ * apiVersion: 'v1beta' required for multi-tool support (googleSearch + codeExecution + urlContext)
+ */
 const getAI = () => {
-  const apiKey = geminiApiKey.value();
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY secret not configured");
-  }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({
+    vertexai: true,
+    project: VERTEX_PROJECT,
+    location: VERTEX_LOCATION,
+    apiVersion: 'v1beta', // Required for multi-tool support
+  });
 };
 
+// =============================================================================
+// TYPES
+// =============================================================================
+interface ContentPart {
+  text?: string;
+  thought?: boolean;
+  thoughtSignature?: string;
+  executableCode?: { language?: string; code: string };
+  codeExecutionResult?: { outcome?: string; output: string };
+  inlineData?: { mimeType: string; data: string };
+}
+
+interface HistoryMessage {
+  role: 'user' | 'model';
+  text: string;
+  thoughtSignature?: string; // Store thought signature for multi-turn
+}
+
+// =============================================================================
+// MAIN STREAMING ENDPOINT
+// =============================================================================
 /**
  * Main chat streaming endpoint with SSE (v2)
  * Handles both regular chat and image generation + Auto-Suggestions
+ *
+ * Gemini 3 Pro Features:
+ * - Multi-tool support: googleSearch + codeExecution + urlContext
+ * - Thought signatures for reasoning continuity
+ * - thinkingLevel parameter (replaces thinkingBudget)
  */
 export const streamChat = onRequest(
   {
-    secrets: [geminiApiKey],
     timeoutSeconds: 540,
     memory: "512MiB",
     cors: true,
+    // Vertex AI uses ADC (Application Default Credentials) from Cloud Functions service account
   },
   async (req, res) => {
     // CORS headers
@@ -62,12 +95,12 @@ export const streamChat = onRequest(
 
       const ai = getAI();
 
-      // Prepare message parts
-      const parts: any[] = [];
+      // Prepare message parts for current user message
+      const userParts: ContentPart[] = [];
 
       if (attachments && attachments.length > 0) {
         attachments.forEach((att: any) => {
-          parts.push({
+          userParts.push({
             inlineData: {
               mimeType: att.mimeType,
               data: att.data,
@@ -77,42 +110,63 @@ export const streamChat = onRequest(
       }
 
       if (newMessage && newMessage.trim()) {
-        parts.push({ text: newMessage });
+        userParts.push({ text: newMessage });
       }
 
-      // Convert history
-      const contents = [
-        ...(history || []).map((msg: any) => ({
-          role: msg.role,
-          parts: [{ text: msg.text }],
-        })),
-        { role: "user", parts },
-      ];
+      // =======================================================================
+      // BUILD CONTENTS WITH THOUGHT SIGNATURES
+      // For Gemini 3 Pro, thought signatures must be preserved across turns
+      // =======================================================================
+      const contents: any[] = [];
+
+      if (history && history.length > 0) {
+        for (const msg of history as HistoryMessage[]) {
+          const msgParts: any[] = [{ text: msg.text }];
+
+          // Include thought signature if present (required for Gemini 3 Pro multi-turn)
+          if (msg.thoughtSignature) {
+            msgParts.push({ thoughtSignature: msg.thoughtSignature });
+          }
+
+          contents.push({
+            role: msg.role,
+            parts: msgParts,
+          });
+        }
+      }
+
+      // Add current user message
+      contents.push({ role: "user", parts: userParts });
 
       // --- SYSTEM INSTRUCTION CONSTRUCTION ---
       let systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
-      
+
       // Personalization: Inject User Name if provided
       const userName = settings?.userName;
       if (userName) {
-          const nameInstruction = `The user's name is "${userName}". Use it naturally in conversation where appropriate.`;
-          systemInstruction = systemInstruction 
-              ? `${nameInstruction}\n\n${systemInstruction}`
-              : nameInstruction;
+        const nameInstruction = `The user's name is "${userName}". Use it naturally in conversation where appropriate.`;
+        systemInstruction = systemInstruction
+          ? `${nameInstruction}\n\n${systemInstruction}`
+          : nameInstruction;
       }
 
       // Model Type Checks
       const isImageGen = modelId === "gemini-2.5-flash-image";
       const isLite = modelId === "gemini-2.5-flash-lite";
-      
+      const isPro = modelId === "gemini-3-pro-preview";
+
       // Thinking Config: Enable for Flash/Pro, Disable for Lite/Image
       const isThinkingCapable = !isLite && !isImageGen;
 
       // Track full response text for suggestions
       let fullResponseText = "";
+      // Track thought signature for client to store (for multi-turn)
+      let lastThoughtSignature: string | undefined;
 
       if (isImageGen) {
-        // Image generation (non-streaming)
+        // =====================================================================
+        // IMAGE GENERATION (non-streaming)
+        // =====================================================================
         const response: any = await ai.models.generateContent({
           model: modelId,
           contents,
@@ -149,41 +203,44 @@ export const streamChat = onRequest(
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         if ((res as any).flush) (res as any).flush();
         res.end();
-        return; // No suggestions for Image Gen
+        return;
       } else {
-        // Regular chat streaming with Google Search & Thinking
-        
-        // Check if Pro model
-        const isPro = modelId === "gemini-3-pro-preview";
+        // =====================================================================
+        // REGULAR CHAT STREAMING WITH TOOLS & THINKING
+        // =====================================================================
 
         // Configure Thinking based on model type
         let thinkingConfig: any = undefined;
 
         if (isThinkingCapable) {
-            if (isPro) {
-                // Gemini 3 Pro: uses thinkingLevel
-                thinkingConfig = {
-                    includeThoughts: true,
-                    thinkingLevel: "low"
-                };
-            } else {
-                // Gemini 2.5 Flash: uses thinkingBudget
-                thinkingConfig = {
-                    includeThoughts: true,
-                    thinkingBudget: -1  // dynamic
-                };
-            }
+          if (isPro) {
+            // Gemini 3 Pro: uses thinkingLevel (not thinkingBudget!)
+            // "low" for fast responses, "high" for complex reasoning
+            thinkingConfig = {
+              includeThoughts: true,
+              thinkingLevel: "low"
+            };
+          } else {
+            // Gemini 2.5 Flash: uses thinkingBudget
+            thinkingConfig = {
+              includeThoughts: true,
+              thinkingBudget: -1 // dynamic
+            };
+          }
         }
 
-        // Configure Tools based on model
-
+        // =====================================================================
+        // CONFIGURE TOOLS BASED ON MODEL
+        // Gemini 3 Pro: supports multi-tool (googleSearch + codeExecution + urlContext)
+        // Gemini 2.5 Flash: only googleSearch
+        // =====================================================================
         const tools: any[] = isPro
-            ? [
-                { googleSearch: {} },
-                { codeExecution: {} },
-                { urlContext: {} }
-              ]
-            : [{ googleSearch: {} }];  // Flash: only search
+          ? [
+              { googleSearch: {} },
+              { codeExecution: {} },
+              { urlContext: {} }
+            ]
+          : [{ googleSearch: {} }];
 
         const result = await ai.models.generateContentStream({
           model: modelId || "gemini-2.5-flash",
@@ -201,57 +258,91 @@ export const streamChat = onRequest(
         let sentMetadata = false;
 
         for await (const chunk of result) {
-          // Handle Thinking & Text parts
           const candidates = (chunk as any).candidates;
+
           if (candidates && candidates.length > 0) {
-             const parts = candidates[0].content?.parts;
-             if (parts) {
-                 for (const part of parts) {
-                     // Check if this part is a thought
-                     const isThought = (part as any).thought === true;
-                     
-                     if (isThought && part.text) {
-                         res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
-                         if ((res as any).flush) (res as any).flush();
-                     } else if (part.text) {
-                         fullResponseText += part.text; // Accumulate for suggestions
-                         res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
-                         if ((res as any).flush) (res as any).flush();
-                     }
-                 }
-             }
-          } else {
-              // Fallback for simple text chunks
-              const text = chunk.text;
-              if (text) {
-                fullResponseText += text;
-                res.write(`data: ${JSON.stringify({ text })}\n\n`);
-                if ((res as any).flush) (res as any).flush();
+            const candidate = candidates[0];
+            const parts = candidate.content?.parts as ContentPart[] | undefined;
+
+            if (parts) {
+              for (const part of parts) {
+                // ---------------------------------------------------------
+                // THOUGHT SIGNATURE: Capture for multi-turn continuity
+                // Required for Gemini 3 Pro with tools
+                // ---------------------------------------------------------
+                if (part.thoughtSignature) {
+                  lastThoughtSignature = part.thoughtSignature;
+                }
+
+                // ---------------------------------------------------------
+                // THINKING/REASONING: Model's internal thought process
+                // ---------------------------------------------------------
+                if (part.thought === true && part.text) {
+                  res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                }
+                // ---------------------------------------------------------
+                // CODE EXECUTION: Python code generated and executed
+                // ---------------------------------------------------------
+                else if (part.executableCode) {
+                  const codeBlock = `\n\`\`\`${part.executableCode.language || 'python'}\n${part.executableCode.code}\n\`\`\`\n`;
+                  fullResponseText += codeBlock;
+                  res.write(`data: ${JSON.stringify({ text: codeBlock })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                }
+                // ---------------------------------------------------------
+                // CODE EXECUTION RESULT: Output from executed code
+                // ---------------------------------------------------------
+                else if (part.codeExecutionResult) {
+                  const resultBlock = `\n**Code Output:**\n\`\`\`\n${part.codeExecutionResult.output}\n\`\`\`\n`;
+                  fullResponseText += resultBlock;
+                  res.write(`data: ${JSON.stringify({ text: resultBlock })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                }
+                // ---------------------------------------------------------
+                // REGULAR TEXT
+                // ---------------------------------------------------------
+                else if (part.text) {
+                  fullResponseText += part.text;
+                  res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                }
               }
-          }
+            }
 
-          // Extract Grounding Metadata (Sources)
-          let metadata = (chunk as any).groundingMetadata;
-          if (!metadata) {
-             metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
-          }
+            // ---------------------------------------------------------
+            // GROUNDING METADATA (Sources from Google Search)
+            // ---------------------------------------------------------
+            let metadata = (chunk as any).groundingMetadata;
+            if (!metadata) {
+              metadata = candidate.groundingMetadata;
+            }
 
-          if (metadata && !sentMetadata) {
-            if (metadata.groundingChunks) {
-               const sources = metadata.groundingChunks
-                 .map((c: any) => {
+            if (metadata && !sentMetadata) {
+              if (metadata.groundingChunks) {
+                const sources = metadata.groundingChunks
+                  .map((c: any) => {
                     if (c.web) {
-                        return { title: c.web.title || "Web Source", url: c.web.uri };
+                      return { title: c.web.title || "Web Source", url: c.web.uri };
                     }
                     return null;
-                 })
-                 .filter((s: any) => s !== null);
+                  })
+                  .filter((s: any) => s !== null);
 
-               if (sources.length > 0) {
-                 res.write(`data: ${JSON.stringify({ sources })}\n\n`);
-                 if ((res as any).flush) (res as any).flush();
-                 sentMetadata = true; 
-               }
+                if (sources.length > 0) {
+                  res.write(`data: ${JSON.stringify({ sources })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                  sentMetadata = true;
+                }
+              }
+            }
+          } else {
+            // Fallback for simple text chunks
+            const text = (chunk as any).text;
+            if (text) {
+              fullResponseText += text;
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+              if ((res as any).flush) (res as any).flush();
             }
           }
 
@@ -260,48 +351,57 @@ export const streamChat = onRequest(
           if ((res.socket as any)?.uncork) (res.socket as any).uncork();
         }
 
-        // --- SUGGESTION GENERATION (Server-Side Pipeline) ---
-        // CHECK USER PREFERENCE: Default to true if undefined
+        // =====================================================================
+        // SEND THOUGHT SIGNATURE TO CLIENT (for multi-turn storage)
+        // Client should store this and send it back in history for next request
+        // =====================================================================
+        if (lastThoughtSignature) {
+          res.write(`data: ${JSON.stringify({ thoughtSignature: lastThoughtSignature })}\n\n`);
+          if ((res as any).flush) (res as any).flush();
+        }
+
+        // =====================================================================
+        // SUGGESTION GENERATION (Server-Side Pipeline)
+        // =====================================================================
         const suggestionsEnabled = settings?.showSuggestions !== false;
-        
+
         console.log(`[Suggestions] Enabled: ${suggestionsEnabled}, Length: ${fullResponseText.trim().length}`);
-        
-        // Only generate if enabled AND text exists and not too short
+
         if (suggestionsEnabled && fullResponseText.trim().length > 10) {
-            try {
-                console.log("[Suggestions] Generating...");
-                const suggestionResp = await ai.models.generateContent({
-                    model: "gemini-2.5-flash-lite",
-                    contents: `
-                        ${SUGGESTION_PROMPT}
-                        
-                        Context - AI Response:
-                        "${fullResponseText.slice(0, 2000)}"
-                    `,
-                    config: {
-                        responseMimeType: 'application/json',
-                        temperature: 0.7
-                    }
-                });
-                
-                const suggText = suggestionResp.text;
-                
-                if (suggText) {
-                    // CLEANUP: Remove markdown blocks if present (common LLM behavior)
-                    const cleanJson = suggText.replace(/```json/g, '').replace(/```/g, '').trim();
-                    
-                    const parsed = JSON.parse(cleanJson);
-                    if (Array.isArray(parsed)) {
-                        const suggestions = parsed.slice(0, 3);
-                        res.write(`data: ${JSON.stringify({ suggestions })}\n\n`);
-                        if ((res as any).flush) (res as any).flush();
-                    }
-                }
-            } catch (err) {
-                console.error("[Suggestions] Error:", err);
+          try {
+            console.log("[Suggestions] Generating...");
+            const suggestionResp = await ai.models.generateContent({
+              model: "gemini-2.5-flash-lite",
+              contents: `
+                ${SUGGESTION_PROMPT}
+
+                Context - AI Response:
+                "${fullResponseText.slice(0, 2000)}"
+              `,
+              config: {
+                responseMimeType: 'application/json',
+                temperature: 0.7
+              }
+            });
+
+            const suggText = suggestionResp.text;
+
+            if (suggText) {
+              // CLEANUP: Remove markdown blocks if present
+              const cleanJson = suggText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+              const parsed = JSON.parse(cleanJson);
+              if (Array.isArray(parsed)) {
+                const suggestions = parsed.slice(0, 3);
+                res.write(`data: ${JSON.stringify({ suggestions })}\n\n`);
+                if ((res as any).flush) (res as any).flush();
+              }
             }
+          } catch (err) {
+            console.error("[Suggestions] Error:", err);
+          }
         } else {
-             console.log("[Suggestions] Skipped.");
+          console.log("[Suggestions] Skipped.");
         }
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
@@ -316,4 +416,5 @@ export const streamChat = onRequest(
       if ((res as any).flush) (res as any).flush();
       res.end();
     }
-  });
+  }
+);
