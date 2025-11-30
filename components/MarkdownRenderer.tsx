@@ -5,7 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Copy, Check, Download, Square, CheckSquare } from 'lucide-react';
 
 interface MarkdownRendererProps {
@@ -14,6 +14,7 @@ interface MarkdownRendererProps {
 
 const CodeBlock = ({ language, children, ...props }: any) => {
   const [copied, setCopied] = useState(false);
+  const isDark = document.documentElement.classList.contains('dark');
 
   const handleCopy = () => {
     navigator.clipboard.writeText(String(children));
@@ -22,7 +23,7 @@ const CodeBlock = ({ language, children, ...props }: any) => {
   };
 
   return (
-    <div className="relative group rounded-lg overflow-hidden my-4 border border-gray-200 dark:border-gray-700/50 bg-[#1e1e1e] shadow-sm">
+    <div className={`relative group rounded-lg overflow-hidden my-4 border border-gray-200 dark:border-gray-700/50 shadow-sm ${isDark ? 'bg-[#1e1e1e]' : 'bg-gray-100'}`}>
       <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 dark:bg-[#2d2e33] border-b border-gray-200 dark:border-gray-700/50">
         <span className="text-xs text-gray-600 dark:text-gray-400 font-mono font-medium">{language || 'text'}</span>
         <button 
@@ -37,7 +38,7 @@ const CodeBlock = ({ language, children, ...props }: any) => {
       <div className="overflow-x-auto">
         <SyntaxHighlighter
             {...props}
-            style={vscDarkPlus}
+            style={isDark ? vscDarkPlus : vs}
             language={language}
             PreTag="div"
             customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '0.875rem', lineHeight: '1.5' }}
