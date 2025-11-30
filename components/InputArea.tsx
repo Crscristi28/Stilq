@@ -25,7 +25,8 @@ const MIME_TO_EXT: Record<string, string> = {
 const uploadAttachmentToStorage = async (
   base64Data: string,
   mimeType: string,
-  userId: string
+  userId: string,
+  originalName?: string
 ): Promise<string> => {
   try {
     // Validate size (20MB limit)
@@ -43,9 +44,23 @@ const uploadAttachmentToStorage = async (
     const blob = new Blob([byteArray], { type: mimeType });
 
     // Get file extension
-    const ext = MIME_TO_EXT[mimeType] || 'bin';
+    let fileName = '';
     const timestamp = Date.now();
-    const fileName = `${timestamp}.${ext}`;
+
+    if (originalName) {
+        // Use original extension if available
+        const parts = originalName.split('.');
+        if (parts.length > 1) {
+            const ext = parts.pop();
+            fileName = `${timestamp}_${parts.join('.')}.${ext}`;
+        } else {
+             fileName = `${timestamp}_${originalName}`;
+        }
+    } else {
+         // Fallback to MIME mapping
+         const ext = MIME_TO_EXT[mimeType] || 'bin';
+         fileName = `${timestamp}.${ext}`;
+    }
 
     // Upload to Storage
     const storageRef = ref(storage, `users/${userId}/uploads/${fileName}`);
@@ -224,7 +239,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         const attachmentIndex = startIndex + i;
         try {
           console.log('Uploading', att.name, 'to Storage...');
-          const storageUrl = await uploadAttachmentToStorage(att.data!, att.mimeType, user.uid);
+          const storageUrl = await uploadAttachmentToStorage(att.data!, att.mimeType, user.uid, att.name);
           console.log('Uploaded:', att.name, '→', storageUrl);
 
           // 5. Add storageUrl (keep data for Gemini)
@@ -331,7 +346,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         const attachmentIndex = startIndex + i;
         try {
           console.log('Uploading', att.name, 'to Storage...');
-          const storageUrl = await uploadAttachmentToStorage(att.data!, att.mimeType, user.uid);
+          const storageUrl = await uploadAttachmentToStorage(att.data!, att.mimeType, user.uid, att.name);
           console.log('Uploaded:', att.name, '→', storageUrl);
 
           // 5. Add storageUrl (keep data for Gemini)

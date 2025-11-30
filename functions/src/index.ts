@@ -47,6 +47,14 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Helper: Check if MIME type is supported by inlineData (Images, PDF, Audio, Video)
+const isInlineDataSupported = (mimeType: string): boolean => {
+    return mimeType.startsWith('image/') || 
+           mimeType.startsWith('video/') || 
+           mimeType.startsWith('audio/') || 
+           mimeType === 'application/pdf';
+};
+
 /**
  * Main chat streaming endpoint with SSE (v2)
  * Handles both regular chat and image generation + Auto-Suggestions
@@ -96,12 +104,29 @@ export const streamChat = onRequest(
 
       if (attachments && attachments.length > 0) {
         attachments.forEach((att: ChatAttachment) => {
-          parts.push({
-            inlineData: {
-              mimeType: att.mimeType,
-              data: att.data,
-            },
-          });
+            if (isInlineDataSupported(att.mimeType)) {
+                // Send as inlineData (Images, PDF, etc.)
+                parts.push({
+                    inlineData: {
+                        mimeType: att.mimeType,
+                        data: att.data,
+                    },
+                });
+            } else {
+                // Treat as text/code file
+                // Decode base64 to string
+                try {
+                    const decodedText = Buffer.from(att.data, 'base64').toString('utf-8');
+                    const fileNameHeader = att.name ? `File: ${att.name}\n` : 'Attached File:\n';
+                    
+                    parts.push({
+                        text: `${fileNameHeader}\`\`\`${att.mimeType}\n${decodedText}\n\`\`\`\n`
+                    });
+                } catch (e) {
+                    console.error(`Failed to decode attachment ${att.name}:`, e);
+                    // Fallback or ignore
+                }
+            }
         });
       }
 

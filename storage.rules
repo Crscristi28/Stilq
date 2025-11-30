@@ -6,10 +6,11 @@ service firebase.storage {
       allow write: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource.size < 20 * 1024 * 1024
+                   // Allow images, PDFs, and any text/code based formats
                    && (request.resource.contentType.matches('image/.*') ||
                        request.resource.contentType == 'application/pdf' ||
-                       request.resource.contentType == 'text/plain' ||
-                       request.resource.contentType == 'text/csv');
+                       request.resource.contentType.matches('text/.*') ||
+                       request.resource.contentType.matches('application/.*')); 
       allow read: if request.auth != null && request.auth.uid == userId;
     }
 
