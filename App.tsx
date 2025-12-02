@@ -109,7 +109,9 @@ const App: React.FC = () => {
 
   // Ensure default userName is set if user logs in
   useEffect(() => {
-      if (user?.displayName && !appSettings.userName) {
+      // Only set default if userName is strictly undefined (never set before)
+      // This allows the user to set it to "" (empty string) without it bouncing back
+      if (user?.displayName && appSettings.userName === undefined) {
           setAppSettings(prev => ({ ...prev, userName: user.displayName!.split(' ')[0] }));
       }
   }, [user, appSettings.userName]);
