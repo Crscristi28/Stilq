@@ -1,10 +1,11 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { GoogleGenAI, Part, Content, ThinkingConfig, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, Part, Content, ThinkingConfig, ThinkingLevel, Type } from "@google/genai";
 import * as admin from "firebase-admin";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 import { ROUTER_PROMPT } from "./prompts/router";
 import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
+import { IMAGE_AGENT_SYSTEM_PROMPT } from "./prompts/image-agent";
 
 admin.initializeApp();
 
@@ -34,7 +35,7 @@ interface ChatRequest {
     history?: HistoryMessage[];
     newMessage?: string;
     attachments?: ChatAttachment[];
-    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto';
+    modelId?: 'gemini-2.5-flash' | 'gemini-3-pro-preview' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto' | 'image-agent';
     settings?: ChatSettings;
 }
 
@@ -222,10 +223,11 @@ export const streamChat = onRequest(
 
       // Other Model Type Checks
       const isImageGen = selectedModelId === "gemini-2.5-flash-image";
+      const isImageAgent = selectedModelId === "image-agent";
       const isLite = selectedModelId === "gemini-2.5-flash-lite";
-      
-      // Thinking Config: Enable for Flash/Pro, Disable for Lite/Image
-      const isThinkingCapable = !isLite && !isImageGen;
+
+      // Thinking Config: Enable for Flash/Pro, Disable for Lite/Image/ImageAgent
+      const isThinkingCapable = !isLite && !isImageGen && !isImageAgent;
 
       // Track full response text for suggestions
       let fullResponseText = "";
@@ -286,7 +288,100 @@ export const streamChat = onRequest(
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         if ((res as any).flush) (res as any).flush();
         res.end();
-        return; // No suggestions for Image Gen
+        return;
+      } else if (isImageAgent) {
+        // IMAGE AGENT: Flash with generateImage tool
+        const generateImageTool = {
+          functionDeclarations: [{
+            name: "generateImage",
+            description: "Generate an image based on a text prompt",
+            parameters: {
+              type: Type.OBJECT,
+              properties: {
+                prompt: {
+                  type: Type.STRING,
+                  description: "Detailed description of the image to generate"
+                },
+                aspectRatio: {
+                  type: Type.STRING,
+                  enum: ["1:1", "16:9", "9:16", "4:3", "3:4"],
+                  description: "Aspect ratio for the image"
+                },
+                style: {
+                  type: Type.STRING,
+                  description: "Optional style modifier (e.g. photorealistic, anime, sketch)"
+                }
+              },
+              required: ["prompt"]
+            }
+          }]
+        };
+
+        const agentResult = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents,
+          config: {
+            tools: [generateImageTool],
+            systemInstruction: IMAGE_AGENT_SYSTEM_PROMPT,
+            thinkingConfig: {
+              thinkingBudget: 0
+            }
+          }
+        });
+
+        const agentResponse = agentResult as any;
+        const parts = agentResponse.candidates?.[0]?.content?.parts || [];
+
+        for (const part of parts) {
+          // Check for function call
+          if (part.functionCall) {
+            const { name, args } = part.functionCall;
+            console.log(`[ImageAgent] Function call: ${name}`, args);
+
+            if (name === "generateImage") {
+              const imagePrompt = args.prompt || "";
+              const aspectRatio = args.aspectRatio || settings?.aspectRatio || "1:1";
+              const style = args.style || settings?.imageStyle;
+
+              let finalPrompt = imagePrompt;
+              if (style && style !== "none") {
+                finalPrompt += `\n\nStyle: ${style}, high quality, detailed.`;
+              }
+
+              // Call the image model
+              const imageResponse: any = await ai.models.generateContent({
+                model: "gemini-2.5-flash-image",
+                contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+                config: {
+                  responseModalities: ['TEXT', 'IMAGE'],
+                  imageConfig: { aspectRatio }
+                }
+              });
+
+              const imageParts = imageResponse.candidates?.[0]?.content?.parts || [];
+              for (const imgPart of imageParts) {
+                if (imgPart.inlineData) {
+                  const mimeType = imgPart.inlineData.mimeType || 'image/png';
+                  const base64Data = imgPart.inlineData.data.replace(/\r?\n|\r/g, '');
+                  // Include aspectRatio so frontend can size skeleton correctly
+                  res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data, aspectRatio } })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                } else if (imgPart.text) {
+                  res.write(`data: ${JSON.stringify({ text: imgPart.text })}\n\n`);
+                  if ((res as any).flush) (res as any).flush();
+                }
+              }
+            }
+          } else if (part.text) {
+            res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
+            if ((res as any).flush) (res as any).flush();
+          }
+        }
+
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
+        res.end();
+        return;
       } else {
         // Regular chat streaming with Google Search & Thinking
 

@@ -237,17 +237,47 @@ const MessageItem = ({
             {/* Generated Images */}
             {msg.attachments && msg.attachments.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-3">
-                    {msg.attachments.map((att: any, idx: number) => (
-                        att.mimeType?.startsWith('image/') && (att.storageUrl || att.data) && (
-                            <div key={idx} className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] max-w-[400px]">
-                                <img
-                                    src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
-                                    alt="Generated image"
-                                    className="w-full h-auto object-contain max-h-[400px]"
-                                />
-                            </div>
-                        )
-                    ))}
+                    {msg.attachments.map((att: any, idx: number) => {
+                        if (!att.mimeType?.startsWith('image/')) return null;
+
+                        // Convert "16:9" to "16/9" for CSS aspect-ratio
+                        const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
+
+                        // Placeholder skeleton - fixed width 400px with aspect-ratio for height
+                        if (att.isPlaceholder) {
+                            return (
+                                <div
+                                    key={idx}
+                                    className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] animate-pulse"
+                                    style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                >
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                        <Sparkles className="text-blue-500 animate-pulse" size={24} />
+                                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating image...</span>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        // Real image - same fixed width to prevent layout shift
+                        if (att.storageUrl || att.data) {
+                            return (
+                                <div
+                                    key={idx}
+                                    className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e]"
+                                    style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                >
+                                    <img
+                                        src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                        alt="Generated image"
+                                        className="w-full h-full object-contain"
+                                    />
+                                </div>
+                            );
+                        }
+
+                        return null;
+                    })}
                 </div>
             )}
 

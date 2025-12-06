@@ -424,15 +424,32 @@ const App: React.FC = () => {
         },
         async (imageData) => {
             console.log("APP: onImage called!", imageData.mimeType);
-            // Upload generated image to Storage and add as attachment
             if (user?.uid && sessionId) {
+                // 1. Create placeholder immediately with aspect ratio
+                const placeholder: Attachment = {
+                    mimeType: imageData.mimeType,
+                    isPlaceholder: true,
+                    aspectRatio: imageData.aspectRatio || settings.aspectRatio || '1:1'
+                };
+
+                // 2. Add placeholder to show skeleton immediately
+                streamAttachmentsRef.current = [...streamAttachmentsRef.current, placeholder];
+
                 try {
                     console.log("APP: Uploading to Storage...");
                     const attachment = await uploadGeneratedImage(imageData, user.uid, sessionId);
                     console.log("APP: Upload done, storageUrl:", attachment.storageUrl);
-                    streamAttachmentsRef.current = [...streamAttachmentsRef.current, attachment];
+
+                    // 3. Replace placeholder with real attachment (keep aspectRatio)
+                    streamAttachmentsRef.current = streamAttachmentsRef.current.map(att =>
+                        att === placeholder
+                            ? { ...attachment, aspectRatio: imageData.aspectRatio || settings.aspectRatio || '1:1' }
+                            : att
+                    );
                 } catch (err) {
                     console.error("APP: Failed to upload generated image:", err);
+                    // Remove placeholder on error
+                    streamAttachmentsRef.current = streamAttachmentsRef.current.filter(att => att !== placeholder);
                 }
             } else {
                 console.log("APP: Missing user or sessionId!", user?.uid, sessionId);

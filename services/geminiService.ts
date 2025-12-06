@@ -20,7 +20,7 @@ export const streamChatResponse = async (
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
   onSuggestions?: (suggestions: string[]) => void,
-  onImage?: (image: { mimeType: string; data: string }) => Promise<void>
+  onImage?: (image: { mimeType: string; data: string; aspectRatio?: string }) => Promise<void>
 ): Promise<string> => {
   
   // Construct System Instruction

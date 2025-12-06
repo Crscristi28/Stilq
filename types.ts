@@ -10,6 +10,7 @@ export enum ModelId {
   FLASH = 'gemini-2.5-flash', // The Standard Chat
   PRO = 'gemini-3-pro-preview', // The Brain
   IMAGE_GEN = 'gemini-2.5-flash-image', // The Artist
+  IMAGE_AGENT = 'image-agent', // Flash + Image Tool
 }
 
 export interface Attachment {
@@ -17,6 +18,8 @@ export interface Attachment {
   data?: string; // base64 (Local preview)
   storageUrl?: string; // Firebase Storage URL (Remote persistence)
   name?: string;
+  isPlaceholder?: boolean; // For skeleton loading states
+  aspectRatio?: string; // For placeholders to match dimensions (e.g. "16:9")
 }
 
 export interface Source {
@@ -81,7 +84,12 @@ export const MODELS: ModelConfig[] = [
     description: 'Advanced reasoning and complex tasks',
     icon: 'Brain',
   },
-  // IMAGE_GEN removed from UI selector - accessed via Input Area mode only
+  {
+    id: ModelId.IMAGE_AGENT,
+    name: 'Elora Artist',
+    description: 'Creates images with context awareness',
+    icon: 'Image',
+  },
 ];
 
 // --- Prompt Engineering Types ---

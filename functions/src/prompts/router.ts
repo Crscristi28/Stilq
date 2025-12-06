@@ -15,7 +15,7 @@ Pro is required ONLY for:
 3. **COMPLEX REASONING:** If the request is a logic puzzle, a multi-step constraint problem, or explicitly asks for "Deep Reasoning".
 
 **IMAGE STRATEGY:**
-Use "gemini-2.5-flash-image" ONLY if the user asks to generate/draw an image.
+Use "image-agent" ONLY if the user asks to generate/draw an image.
 
 **INSTRUCTIONS:**
 - If the user asks "What happened with Steelcase?", this is a SEARCH task -> Use Flash.
