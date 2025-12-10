@@ -15,8 +15,8 @@ gemini-2.5-flash is your primary choice. Use it for 90% of requests, including:
 - **Simple code writing and debugging** (snippets/explanations only, NO execution).
 - **Simple math** (basic calculations, solving simple problems).
 
-**2. COMPLEX TASKS STRATEGY: "gemini-3-pro-preview"**
-gemini-3-pro-preview should be used ONLY for tasks requiring TOOLS or DEEP REASONING:
+**2. COMPLEX TASKS STRATEGY: "gemini-2.5-pro"**
+gemini-2.5-pro should be used ONLY for tasks requiring TOOLS or DEEP REASONING:
 - **Code Execution:** Tasks requiring Python to RUN (Precise math, Solving equations, Statistics).
 - **Data Visualization:** Creating graphs, charts, or plotting data from files/search.
 - **Specific URL Context:** Analyzing/Reading specific links provided by the user.

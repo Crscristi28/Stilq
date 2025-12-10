@@ -1,0 +1,184 @@
+# Elora Flash/Think Mode - Implementační Plán
+
+## Přehled
+
+Místo jednoho "auto" módu vytvoříme dva explicitní módy:
+- **Flash Mode** - levný, rychlý (default pro nové uživatele)
+- **Think Mode** - premium, chytřejší modely
+
+Plus existující:
+- **Research** - Sonnet s extended thinking (tlačítko, bez routeru)
+- **Image Mode** - Flash-image přímo (toggle, bez routeru)
+
+---
+
+## Architektura
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         FRONTEND                                 │
+│                                                                  │
+│   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐    │
+│   │  Flash   │   │  Think   │   │ Research │   │  Image   │    │
+│   │  Mode    │   │  Mode    │   │  Button  │   │  Mode    │    │
+│   │ (toggle) │   │ (toggle) │   │          │   │ (toggle) │    │
+│   └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘    │
+│        │              │              │              │           │
+│        ▼              ▼              ▼              ▼           │
+│   mode='flash'   mode='think'   mode='research'  mode='image'  │
+│                                                                  │
+└──────────────────────────┬───────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         BACKEND                                  │
+│                                                                  │
+│   if (mode === 'image')     → Flash-Image přímo (bez routeru)   │
+│   if (mode === 'research')  → Sonnet+thinking přímo (bez routeru)│
+│   if (mode === 'flash')     → Router Flash → vybere model       │
+│   if (mode === 'think')     → Router Think → vybere model       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Model Matrix
+
+### Flash Mode Router
+| Úkol | Model | Tools |
+|------|-------|-------|
+| Běžný chat | `gemini-2.5-flash` | Google Search |
+| Těžší úkoly | `gemini-2.5-flash` + 32k thinking | Google Search, Code, URL |
+| Obrázky | `gemini-2.5-flash` + image tools | generateImage, editImage |
+| Multi-tool | `claude-haiku-4-5-20250929` | Více tools najednou |
+
+### Think Mode Router
+| Úkol | Model | Tools |
+|------|-------|-------|
+| Běžný chat | `claude-haiku-4-5-20250929` | - |
+| Těžší úkoly | `claude-sonnet-4-5-20250929` / `gemini-2.5-pro` | Code, URL, Search |
+| Obrázky | `gemini-2.5-flash` + image tools | generateImage, editImage |
+| Multi-tool | `claude-haiku-4-5-20250929` | Více tools najednou |
+
+### Přímé módy (bez routeru)
+| Mód | Model | Účel |
+|-----|-------|------|
+| Research | `claude-sonnet-4-5-20250929` + extended thinking | Deep research |
+| Image | `gemini-2.5-flash-image` | Přímá generace obrázků |
+
+> **POZNÁMKA:** Používáme nejnovější Claude modely (září 2025):
+> - `claude-haiku-4-5-20250929` - rychlý, levný
+> - `claude-sonnet-4-5-20250929` - chytrý, s extended thinking
+
+---
+
+## Implementační Kroky
+
+### Fáze 1: Claude SDK Integrace
+- [ ] Nainstalovat `@anthropic-ai/sdk` do functions
+- [ ] Přidat `ANTHROPIC_API_KEY` do Firebase secrets
+- [ ] Vytvořit Claude client helper v index.ts
+- [ ] Implementovat streaming pro Claude modely
+
+### Fáze 2: Router Rozdělení
+- [ ] Přejmenovat `router.ts` → `router-flash.ts`
+- [ ] Vytvořit `router-think.ts` (kopie s jinými modely)
+- [ ] Upravit `determineModelFromIntent()` - přidat `mode` parametr
+- [ ] Přidat podmínku pro výběr správného router promptu
+
+### Fáze 3: Model Handlery
+- [ ] Přidat Haiku handler (streaming)
+- [ ] Přidat Sonnet handler (streaming + thinking)
+- [ ] Upravit existující Flash/Pro handlery
+- [ ] Sdílet image tools mezi módy (Flash-image zůstává)
+
+### Fáze 4: Frontend
+- [ ] Přidat `eloraMode` state: 'flash' | 'think'
+- [ ] UI toggle pro Flash/Think v settings nebo input area
+- [ ] Poslat `mode` v API requestu
+- [ ] Uložit preferenci do localStorage
+
+### Fáze 5: Testování
+- [ ] Test Flash mode - všechny cesty
+- [ ] Test Think mode - všechny cesty
+- [ ] Test Research button
+- [ ] Test Image mode
+- [ ] Test přepínání mezi módy
+
+---
+
+## Soubory k Úpravě
+
+### Backend (functions/src/)
+```
+index.ts                    - hlavní logika, přidat Claude, mode routing
+prompts/router.ts           → router-flash.ts (přejmenovat)
+prompts/router-think.ts     - nový soubor (kopie s jinými modely)
+prompts/claude-system.ts    - nový soubor (system prompt pro Claude)
+```
+
+### Frontend
+```
+App.tsx                     - přidat eloraMode state
+components/InputArea.tsx    - toggle pro Flash/Think
+services/geminiService.ts   - poslat mode v requestu
+types.ts                    - přidat EloraMode type
+```
+
+---
+
+## Router Prompts
+
+### router-flash.ts
+```
+DEFAULT: gemini-2.5-flash
+HARD TASKS: gemini-2.5-flash + thinking (32k)
+IMAGES: image-agent
+MULTI-TOOL: claude-3-haiku
+```
+
+### router-think.ts
+```
+DEFAULT: claude-3-haiku
+HARD TASKS: claude-3.5-sonnet / gemini-2.5-pro
+IMAGES: image-agent
+MULTI-TOOL: claude-3-haiku
+```
+
+---
+
+## API Request Format
+
+```typescript
+// Aktuální
+{
+  messages: [...],
+  imageMode: boolean,
+  deepReasoning: boolean
+}
+
+// Nový
+{
+  messages: [...],
+  mode: 'flash' | 'think' | 'image' | 'research'
+}
+```
+
+---
+
+## Otevřené Otázky
+
+1. **Haiku vs Flash pro multi-tool** - proč Haiku? Je lepší v tool calling?
+2. **Sonnet vs Gemini Pro v Think mode** - router vybere podle úkolu, nebo uživatel?
+3. **Cena** - jak zobrazit uživateli že Think mode je dražší?
+4. **Research** - má mít vlastní toggle nebo zůstane jako tlačítko?
+
+---
+
+## Poznámky
+
+- Flash mode = default, většina uživatelů
+- Think mode = power users, složitější úkoly
+- Image tools sdílené mezi módy (vždy Flash-image)
+- Claude modely potřebují jiný streaming format než Gemini

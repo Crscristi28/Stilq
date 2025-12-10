@@ -627,14 +627,14 @@ const App: React.FC = () => {
         language={resolveLanguage(appSettings.language)} // Added prop
       />
       <div className="flex-1 flex flex-col h-full relative min-w-0 bg-white dark:bg-[#0e0e10]">
-          {/* FLOATING ISLAND HEADER */}
-          <div className="fixed top-0 left-0 right-0 z-40 flex items-start justify-between px-4 pointer-events-none pt-safe">
-              <div className="mt-3 pointer-events-auto">
-                  <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 rounded-full bg-white/10 backdrop-blur-md shadow-sm border border-white/20 text-gray-700 dark:text-gray-200 hover:bg-white/20 transition-all active:scale-95"><Menu size={20} /></button>
+          {/* TOP BAR */}
+          <div className="sticky top-0 z-40 flex items-center justify-between px-3 py-1 pt-safe bg-white dark:bg-[#0e0e10]">
+              <div>
+                  <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition-all active:scale-95"><Menu size={20} /></button>
               </div>
-              <div className="relative pointer-events-auto mt-2">
-                  <button onClick={() => setIsModelMenuOpen(!isModelMenuOpen)} className={`flex items-center gap-2 px-4 py-2 rounded-[24px] backdrop-blur-xl shadow-lg border transition-all active:scale-95 duration-300 ${isModelMenuOpen ? 'bg-black/80 dark:bg-[#1e1f20]/90 border-gray-200 dark:border-gray-700 w-64 justify-between' : 'bg-black/50 dark:bg-white/10 border-transparent hover:bg-black/70 text-white w-auto'}`}>
-                      {isModelMenuOpen ? <span className="text-sm font-bold text-white pl-1">{t('selectModel')}</span> : <div className="flex items-center gap-2">{getModelIconSmall(activeModelConfig.id)}<span className="text-xs font-medium tracking-wide text-white">{getModelName(activeModelConfig.id)}</span></div>}
+              <div className="relative">
+                  <button onClick={() => setIsModelMenuOpen(!isModelMenuOpen)} className={`flex items-center gap-2 px-4 py-2 rounded-[24px] border transition-all active:scale-95 duration-300 ${isModelMenuOpen ? 'bg-gray-100 dark:bg-[#1e1f20] border-gray-200 dark:border-gray-700 w-64 justify-between' : 'bg-gray-100 dark:bg-[#1e1f20] border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-[#2d2e33] w-auto'}`}>
+                      {isModelMenuOpen ? <span className="text-sm font-bold text-gray-900 dark:text-white pl-1">{t('selectModel')}</span> : <div className="flex items-center gap-2">{getModelIconSmall(activeModelConfig.id)}<span className="text-xs font-medium tracking-wide text-gray-900 dark:text-white">{getModelName(activeModelConfig.id)}</span></div>}
                       {isModelMenuOpen ? <ChevronDown size={16} className="rotate-180 text-gray-400" /> : null}
                   </button>
                   {isModelMenuOpen && (
@@ -660,17 +660,17 @@ const App: React.FC = () => {
                     </div>
                   )}
               </div>
-              <div className="mt-3 pointer-events-auto">
-                  <button 
-                    onClick={() => setIsSettingsOpen(true)} // User Avatar triggers Settings
-                    className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md shadow-sm border border-white/20 text-gray-700 dark:text-gray-200 hover:bg-white/20 transition-all active:scale-95 overflow-hidden p-0"
+              <div>
+                  <button
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 transition-all active:scale-95 overflow-hidden p-0"
                   >
                     {user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" /> : <span>{user.displayName ? user.displayName[0].toUpperCase() : 'U'}</span>}
                   </button>
               </div>
           </div>
           {/* Chat Area */}
-          <div className="flex-1 overflow-hidden relative flex flex-col bg-white dark:bg-[#0e0e10]" style={{ maskImage: 'linear-gradient(to bottom, transparent 0px, black 120px)' }}>
+          <div className="flex-1 overflow-hidden relative flex flex-col bg-white dark:bg-[#0e0e10]">
             <MessageList
               messages={displayMessages}
               isThinking={isLoading}

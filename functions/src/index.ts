@@ -532,16 +532,17 @@ export const streamChat = onRequest(
         let fullResponseText = "";
 
         const result = await researchAI.models.generateContentStream({
-          model: "gemini-2.5-pro",
+          model: "gemini-3-pro-preview",
           contents,
           config: {
             tools: [
               { googleSearch: {} },
-              { urlContext: {} }
+              { urlContext: {} },
+              { codeExecution: {} }
             ],
             thinkingConfig: {
               includeThoughts: true,
-              thinkingBudget: 16384
+              thinkingLevel: ThinkingLevel.HIGH
             },
             temperature: 1.0,
             topP: 0.95,

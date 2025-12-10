@@ -420,7 +420,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
         if (messages.length > 0) {
             const lastMessage = messages[messages.length - 1];
             if (lastMessage.role === Role.USER) {
-                setFooterHeight('55vh');
+                setFooterHeight('60vh');
                 setIsFooterBig(true);
                 justSentMessageRef.current = true;
                 setTimeout(() => {
@@ -592,7 +592,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
                         onSuggestionClick={onSuggestionClick}
                     />
                 )}
-                components={{ Header: () => <div className="h-20" />, Footer: () => <div style={{ height: footerHeight }} /> }}
+                components={{ Footer: () => <div style={{ height: footerHeight }} /> }}
             />
             {showScrollToBottom && (
                 <button onClick={scrollToBottom} className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 p-2 bg-white dark:bg-[#1a1b1e] text-gray-600 dark:text-gray-200 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all" title="Scroll to bottom"><ArrowDown size={20} /></button>

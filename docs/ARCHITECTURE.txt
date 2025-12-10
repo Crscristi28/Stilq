@@ -1,0 +1,187 @@
+# Elora - Architecture Documentation
+
+## Overview
+
+Elora is a unified AI assistant powered by multiple specialized agents. Users see one seamless assistant, but behind the scenes, different models handle different tasks.
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        FRONTEND (React)                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐ │
+│  │  App.tsx │  │MessageList│  │InputArea │  │  SettingsModal  │ │
+│  └────┬─────┘  └──────────┘  └──────────┘  └──────────────────┘ │
+│       │                                                          │
+│  ┌────▼─────────────────────────────────────────────────────┐   │
+│  │              geminiService.ts                             │   │
+│  │  - Sends messages to backend                              │   │
+│  │  - Handles streaming responses                            │   │
+│  │  - Processes images, sources, thinking chunks             │   │
+│  └────┬──────────────────────────────────────────────────────┘   │
+└───────┼──────────────────────────────────────────────────────────┘
+        │ HTTP POST /api/gemini (streaming)
+        ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                    BACKEND (Firebase Functions)                   │
+│                                                                   │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                     streamChat (index.ts)                   │  │
+│  │                                                             │  │
+│  │  1. Authenticate user (Firebase Auth token)                 │  │
+│  │  2. Route request to appropriate model                      │  │
+│  │  3. Stream response back to frontend                        │  │
+│  └────┬───────────────────────────────────────────────────────┘  │
+│       │                                                           │
+│  ┌────▼────────────────────────────────────────────────────────┐ │
+│  │                    ROUTER AGENT                              │ │
+│  │  Model: gemini-2.5-flash-lite                                │ │
+│  │  Purpose: Decide which model handles the request             │ │
+│  │                                                              │ │
+│  │  Output: { targetModel: "...", reasoning: "..." }            │ │
+│  └────┬─────────────────────────────────────────────────────────┘ │
+│       │                                                           │
+│       ▼                                                           │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                    MODEL SELECTION                           │ │
+│  │                                                              │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │ │
+│  │  │  Flash Model    │  │   Pro Model     │  │ Image Agent  │ │ │
+│  │  │  gemini-2.5-    │  │  gemini-3-pro-  │  │ gemini-2.5-  │ │ │
+│  │  │  flash          │  │  preview        │  │ flash        │ │ │
+│  │  │                 │  │                 │  │              │ │ │
+│  │  │ • Chat          │  │ • Coding        │  │ • Generate   │ │ │
+│  │  │ • Search        │  │ • Math          │  │ • Edit       │ │ │
+│  │  │ • Creative      │  │ • Complex       │  │   images     │ │ │
+│  │  │   writing       │  │   reasoning     │  │              │ │ │
+│  │  └─────────────────┘  └─────────────────┘  └──────┬───────┘ │ │
+│  │                                                    │         │ │
+│  │                                            ┌───────▼───────┐ │ │
+│  │                                            │ Image Model   │ │ │
+│  │                                            │ gemini-2.5-   │ │ │
+│  │                                            │ flash-image   │ │ │
+│  │                                            └───────────────┘ │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+## Agent System
+
+### Router Agent
+- **Model**: `gemini-2.5-flash-lite`
+- **Purpose**: Analyzes user request and routes to appropriate model
+- **Prompt**: `functions/src/prompts/router.ts`
+- **Strategy**:
+  - Default: Flash (cheap, fast)
+  - Exception: Pro (coding, math, complex reasoning)
+  - Image: Image Agent (generate/edit images)
+
+### Flash Agent
+- **Model**: `gemini-2.5-flash`
+- **Purpose**: General conversation, search, creative writing
+- **Prompt**: `functions/src/prompts/flash.ts`
+- **Tools**: Google Search (grounding)
+- **Features**: Thinking mode (deep reasoning)
+
+### Pro Agent
+- **Model**: `gemini-3-pro-preview`
+- **Purpose**: Coding, math, complex reasoning
+- **Prompt**: Same as Flash
+- **Tools**: Google Search, Code Execution, URL Context
+
+### Image Agent
+- **Model**: `gemini-2.5-flash` (orchestrator) + `gemini-2.5-flash-image` (generation)
+- **Purpose**: Generate and edit images
+- **Prompt**: `functions/src/prompts/image-agent.ts`
+- **Tools**:
+  - `generateImage` - Create new images
+  - `editImage` - Modify existing images
+
+## Data Flow
+
+### 1. User sends message
+```
+User → InputArea → App.tsx → geminiService.sendMessage()
+```
+
+### 2. Request to backend
+```
+geminiService → POST /api/gemini → streamChat function
+```
+
+### 3. Router decides
+```
+streamChat → routeRequest() → { targetModel, reasoning }
+```
+
+### 4. Model processes
+```
+streamChat → selectedModel.generateContentStream() → chunks
+```
+
+### 5. Stream back to frontend
+```
+chunks → res.write() → geminiService → App.tsx → MessageList
+```
+
+## Key Files
+
+### Frontend
+| File | Purpose |
+|------|---------|
+| `App.tsx` | Main app, state management, message handling |
+| `components/MessageList.tsx` | Render messages, thinking UI, attachments |
+| `components/InputArea.tsx` | User input, file uploads, mode toggles |
+| `components/MarkdownRenderer.tsx` | Render markdown with code highlighting |
+| `components/Indicators.tsx` | Loading states (searching, generating) |
+| `services/geminiService.ts` | API calls, streaming, response parsing |
+| `types.ts` | TypeScript interfaces |
+
+### Backend (functions/src)
+| File | Purpose |
+|------|---------|
+| `index.ts` | Main function, routing, streaming |
+| `prompts/flash.ts` | Flash model system prompt |
+| `prompts/image-agent.ts` | Image agent system prompt |
+| `prompts/router.ts` | Router agent prompt |
+| `prompts/research.ts` | Deep research agent prompt |
+
+## Features
+
+### Thinking Mode
+- User enables "Deep Reasoning" toggle
+- Model uses extended thinking
+- Thinking process shown in expandable UI block
+- Rendered with MarkdownRenderer
+
+### Image Mode
+- Toggle in settings
+- Direct image generation without router
+- Uses `gemini-2.5-flash-image` directly
+
+### Google Search
+- Automatic grounding for current information
+- Sources displayed below response
+- Clickable links to original content
+
+### Streaming
+- Real-time response display
+- Chunk-by-chunk rendering
+- Indicators for different states:
+  - Searching
+  - Thinking
+  - Generating image
+
+## Authentication
+
+- Firebase Auth (Supabase integration)
+- Token passed in Authorization header
+- Backend verifies token for each request
+
+## Unified Identity
+
+All agents share the same identity:
+- Name: **Elora** (she/her)
+- Personality: Helpful, human-like, precise
+- Users see one seamless assistant
+- Agents share conversation history and context
