@@ -100,7 +100,9 @@ async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, hi
         });
 
         const text = result.text;
-        return JSON.parse(text || "{}") as RouterDecision;
+        // Clean markdown wrapper if present (```json ... ```)
+        const cleanJson = (text || "{}").replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson) as RouterDecision;
     } catch (e) {
         console.error("Router failed, defaulting to Flash:", e);
         return { targetModel: "gemini-2.5-flash", reasoning: "Router error fallback" };
@@ -154,8 +156,8 @@ export const streamChat = onRequest(
 
       if (modelId === 'auto') {
           try {
-             // Router uses Vertex AI (Flash Lite)
-             const routerAI = getVertexAI();
+             // Router uses API Key
+             const routerAI = getAI();
              const decision = await determineModelFromIntent(routerAI, newMessage || "User sent attachment", history || []);
              selectedModelId = decision.targetModel;
              console.log(`[Auto-Router] Routed to ${selectedModelId}. Reason: ${decision.reasoning}`);
@@ -207,11 +209,6 @@ export const streamChat = onRequest(
       // Model checks for history limiting (must be before contents)
       const isImageGen = selectedModelId === "gemini-2.5-flash-image";
       const isResearch = selectedModelId === "research";
-
-      // Map 'research' to actual model ID
-      if (isResearch) {
-          selectedModelId = "gemini-2.5-pro";
-      }
 
       // Limit history for expensive/specialized models (save tokens & costs)
       const limitedHistory = isImageGen
@@ -630,11 +627,11 @@ export const streamChat = onRequest(
                     includeThoughts: true,
                     thinkingBudget: 4096
                 };
-            } else {
-                // Gemini 2.5 Flash: uses thinkingBudget
+            } else if (isFlash) {
+                // Gemini 2.5 Flash: dynamic thinking
                 thinkingConfig = {
                     includeThoughts: true,
-                    thinkingBudget: 1024
+                    thinkingBudget: -1
                 };
             }
         }
@@ -643,21 +640,22 @@ export const streamChat = onRequest(
         console.log(`[THINKING] Config:`, JSON.stringify(thinkingConfig));
 
         // Configure Tools based on model
-        const tools = isPro || isPro25
-            ? [
-                { googleSearch: {} },
-                { codeExecution: {} },
-                { urlContext: {} }
-              ]
-            : [{ googleSearch: {} }];
+        let tools;
+        if (isFlash) {
+            tools = [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }];
+        } else if (isPro) {
+            tools = [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }];
+        } else if (isPro25) {
+            tools = [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }];
+        }
 
         console.log(`[DEBUG] Model: ${selectedModelId}, isPro: ${isPro}`);
         console.log(`[DEBUG] Tools config:`, JSON.stringify(tools));
         console.log(`[DEBUG] ThinkingConfig:`, JSON.stringify(thinkingConfig));
 
-        // Pro models use API Key (for code execution), others use Vertex AI
-        const chatAI = (isPro || isPro25) ? getAI() : getVertexAI();
-        console.log(`[DEBUG] Using: ${(isPro || isPro25) ? 'API Key' : 'Vertex AI'}`);
+        // All chat models use API Key
+        const chatAI = getAI();
+        console.log(`[DEBUG] Using: API Key`);
 
         const result = await chatAI.models.generateContentStream({
           model: selectedModelId || "gemini-2.5-flash",
@@ -690,35 +688,20 @@ export const streamChat = onRequest(
                          console.log(`[DEBUG] FUNCTION CALL:`, JSON.stringify((part as any).functionCall));
                      }
                      if ((part as any).executableCode) {
+                         // Log only, don't send code to client
                          console.log(`[DEBUG] CODE EXECUTION:`, JSON.stringify((part as any).executableCode));
-                         // Send code to client as markdown code block
-                         const code = `\n\`\`\`python\n${(part as any).executableCode.code}\n\`\`\`\n`;
-                         fullResponseText += code;
-                         res.write(`data: ${JSON.stringify({ text: code })}\n\n`);
-                         if ((res as any).flush) (res as any).flush();
                      }
                      if ((part as any).codeExecutionResult) {
                          console.log(`[DEBUG] CODE RESULT:`, JSON.stringify((part as any).codeExecutionResult));
                          const output = (part as any).codeExecutionResult.output || '';
 
-                         // Check if output contains a base64 image (matplotlib/pillow output)
+                         // Only send images to client, ignore ALL text output
                          const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
                          const imageMatch = output.match(base64ImageRegex);
-
                          if (imageMatch) {
-                             // Found base64 image in output - send as image event
                              const mimeType = `image/${imageMatch[1]}`;
                              const base64Data = imageMatch[2];
-                             console.log(`[DEBUG] Found base64 image in code output: ${mimeType}`);
-                             res.write(`data: ${JSON.stringify({
-                                 image: { mimeType, data: base64Data }
-                             })}\n\n`);
-                             if ((res as any).flush) (res as any).flush();
-                         } else {
-                             // Regular text output
-                             const resultText = `\n**Output:**\n\`\`\`\n${output}\n\`\`\`\n`;
-                             fullResponseText += resultText;
-                             res.write(`data: ${JSON.stringify({ text: resultText })}\n\n`);
+                             res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
                              if ((res as any).flush) (res as any).flush();
                          }
                      }
@@ -799,8 +782,8 @@ export const streamChat = onRequest(
         if (suggestionsEnabled && fullResponseText.trim().length > 1500) {
             try {
                 console.log("[Suggestions] Generating...");
-                // Suggestions use Vertex AI (Flash Lite)
-                const suggestionsAI = getVertexAI();
+                // Suggestions use API Key
+                const suggestionsAI = getAI();
                 const suggestionResp = await suggestionsAI.models.generateContent({
                     model: "gemini-2.5-flash-lite",
                     contents: [{
