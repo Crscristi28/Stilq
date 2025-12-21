@@ -71,31 +71,31 @@ export interface ModelConfig {
 export const MODELS: ModelConfig[] = [
   {
     id: ModelId.AUTO,
-    name: 'Elora Auto',
+    name: 'Stilq Auto',
     description: 'Smartly selects the best model for you',
     icon: 'Sparkles',
   },
   {
     id: ModelId.FLASH,
-    name: 'Elora Flash',
+    name: 'Stilq Flash',
     description: 'Fast, efficient, and versatile',
     icon: 'Zap',
   },
   {
     id: ModelId.PRO,
-    name: 'Elora Pro',
+    name: 'Stilq Pro',
     description: 'Advanced reasoning and complex tasks',
     icon: 'Brain',
   },
   {
     id: ModelId.PRO_25,
-    name: 'Elora Pro 2.5',
+    name: 'Stilq Pro 2.5',
     description: 'Stable Pro with high limits',
     icon: 'Cpu',
   },
   {
     id: ModelId.IMAGE_AGENT,
-    name: 'Elora Artist',
+    name: 'Stilq Artist',
     description: 'Creates images with context awareness',
     icon: 'Image',
   },

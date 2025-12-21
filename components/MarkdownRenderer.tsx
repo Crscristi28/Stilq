@@ -75,7 +75,7 @@ const ImageBlock = ({ src, alt, ...props }: ImageBlockProps) => {
       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <a 
           href={src} 
-          download={`elora-generated-${Date.now()}.png`}
+          download={`stilq-generated-${Date.now()}.png`}
           className="p-2 bg-white/80 dark:bg-black/50 hover:bg-white dark:hover:bg-black/70 text-gray-900 dark:text-white rounded-lg backdrop-blur-sm transition-colors flex items-center gap-2 shadow-sm border border-gray-200 dark:border-white/10"
           title="Download Image"
         >

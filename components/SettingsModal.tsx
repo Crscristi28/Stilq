@@ -233,7 +233,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', `elora-backup-${new Date().toISOString().slice(0,10)}.json`);
+    linkElement.setAttribute('download', `stilq-backup-${new Date().toISOString().slice(0,10)}.json`);
     linkElement.click();
   };
 
@@ -529,11 +529,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     {activeTab === 'about' && (
                       <div className="text-center space-y-6 py-6">
                          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-teal-400 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20 rotate-3">
-                            <span className="text-4xl font-bold text-white">E</span>
+                            <span className="text-4xl font-bold text-white">Q</span>
                          </div>
                          
                          <div>
-                            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Elora</h2>
+                            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Stilq</h2>
                             <p className="text-blue-500 text-xs font-bold tracking-widest uppercase mt-1">Version 1.2.0 • Beta</p>
                          </div>
 

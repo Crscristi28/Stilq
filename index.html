@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="manifest" href="/manifest.json" />
-    <title>Elora</title>
+    <title>Stilq</title>
     <script type="importmap">
     {
       "imports": {
@@ -29,7 +29,7 @@
     <script>
       // Immediate theme initialization to prevent FOUC
       try {
-        const savedSettings = localStorage.getItem('elora_settings_v1');
+        const savedSettings = localStorage.getItem('stilq_settings_v1');
         const theme = savedSettings ? JSON.parse(savedSettings).theme : 'dark';
         
         if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {

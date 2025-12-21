@@ -361,9 +361,9 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
       <div className="max-w-3xl mx-auto w-full flex flex-col justify-center bg-gray-100 dark:bg-[#2d2e33] rounded-[28px] p-2 transition-all border border-transparent focus-within:border-gray-300 dark:focus-within:border-gray-600 relative">
         {isMenuOpen && (
           <div ref={menuRef} className="absolute bottom-[calc(100%+8px)] left-0 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-[#2e2e2e] rounded-xl shadow-2xl py-1.5 min-w-[200px] z-50 overflow-hidden">
-            <button onClick={() => handleMenuAction('files')} className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-[#2c2c2c] transition-colors text-gray-800 dark:text-white text-[14px]"><Paperclip size={18} className="text-gray-500 dark:text-gray-400" />{t('actionAddFiles')}</button>
-            <button onClick={() => handleMenuAction('image')} className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-[#2c2c2c] transition-colors text-gray-800 dark:text-white text-[14px]"><ImageIcon size={18} className="text-gray-500 dark:text-gray-400" />{t('actionCreateImage')}</button>
             <button onClick={() => handleMenuAction('research')} className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-[#2c2c2c] transition-colors text-gray-800 dark:text-white text-[14px]"><Search size={18} className="text-gray-500 dark:text-gray-400" />{t('actionResearch')}</button>
+            <button onClick={() => handleMenuAction('image')} className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-[#2c2c2c] transition-colors text-gray-800 dark:text-white text-[14px]"><ImageIcon size={18} className="text-gray-500 dark:text-gray-400" />{t('actionCreateImage')}</button>
+            <button onClick={() => handleMenuAction('files')} className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-[#2c2c2c] transition-colors text-gray-800 dark:text-white text-[14px]"><Paperclip size={18} className="text-gray-500 dark:text-gray-400" />{t('actionAddFiles')}</button>
           </div>
         )}
         <div className="px-2 pt-1">
@@ -371,7 +371,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
                 <div className="w-full mb-2 px-1 animate-slide-up">
                   <div className="flex items-center justify-between p-2 rounded-lg bg-gray-200 dark:bg-[#1a1b1e] border-l-4 border-blue-500">
                       <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-0.5">Replying to {replyingTo.role === 'user' ? 'You' : 'Elora'}</div>
+                          <div className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-0.5">Replying to {replyingTo.role === 'user' ? 'You' : 'Stilq'}</div>
                           <div className="text-xs text-gray-600 dark:text-gray-300 truncate">{replyingTo.text}</div>
                       </div>
                       <button onClick={onClearReply} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-700"><X size={14} /></button>

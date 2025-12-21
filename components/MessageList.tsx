@@ -217,7 +217,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Elora</span>
+                <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Stilq</span>
                 {msg.thinking && (
                     <button
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
@@ -443,7 +443,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
             const availableVoices = window.speechSynthesis.getVoices();
             setVoices(availableVoices);
             try {
-                const saved = localStorage.getItem('elora_settings_v1');
+                const saved = localStorage.getItem('stilq_settings_v1');
                 if (saved) {
                     const settings = JSON.parse(saved);
                     setSelectedVoiceURI(settings.defaultVoiceURI || '');
@@ -508,7 +508,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
         const utterance = new SpeechSynthesisUtterance(text);
         
         // Load saved settings if available
-        const savedVoice = localStorage.getItem('elora_settings_v1');
+        const savedVoice = localStorage.getItem('stilq_settings_v1');
         if (savedVoice) {
             try {
                 const settings = JSON.parse(savedVoice);
@@ -545,11 +545,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
         setSpeechRate(rate);
         // Save to localStorage
         try {
-            const saved = localStorage.getItem('elora_settings_v1');
+            const saved = localStorage.getItem('stilq_settings_v1');
             const settings = saved ? JSON.parse(saved) : {};
             settings.defaultVoiceURI = voiceURI;
             settings.defaultSpeechRate = rate;
-            localStorage.setItem('elora_settings_v1', JSON.stringify(settings));
+            localStorage.setItem('stilq_settings_v1', JSON.stringify(settings));
         } catch(e) {}
     };
 

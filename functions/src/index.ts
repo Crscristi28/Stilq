@@ -623,7 +623,7 @@ export const streamChat = onRequest(
           // Gemini 3 Flash (thinkingLevel options: MINIMAL, LOW, MEDIUM, HIGH)
           modelConfig = {
             tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
-            thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.MEDIUM },
+            thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.HIGH },
             temperature: 1.0,
             topP: 0.95,
             maxOutputTokens: 64000,

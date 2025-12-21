@@ -78,7 +78,7 @@ const App: React.FC = () => {
   // --- SETTINGS (Stays Local) ---
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     try {
-        const saved = localStorage.getItem('elora_settings_v1');
+        const saved = localStorage.getItem('stilq_settings_v1');
         if (saved) {
             return JSON.parse(saved);
         }
@@ -199,7 +199,7 @@ const App: React.FC = () => {
   }, [appSettings.theme]);
 
   useEffect(() => {
-    localStorage.setItem('elora_settings_v1', JSON.stringify(appSettings));
+    localStorage.setItem('stilq_settings_v1', JSON.stringify(appSettings));
   }, [appSettings]);
 
   // --- FEATURE: Handle deleted session ---
@@ -617,7 +617,7 @@ const App: React.FC = () => {
       return (
         <div className="fixed inset-0 flex flex-col items-center justify-center bg-white dark:bg-[#0e0e10] text-gray-900 dark:text-white px-4">
            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-teal-400 rounded-3xl flex items-center justify-center mb-8 shadow-2xl shadow-blue-500/20 animate-fade-in">
-              <span className="text-5xl font-bold text-white">E</span>
+              <span className="text-5xl font-bold text-white">Q</span>
            </div>
            <h1 className="text-3xl font-bold mb-2 text-center">{t('welcomeTitle')}</h1>
            <p className="text-gray-500 dark:text-gray-400 mb-8 text-center">{t('welcomeSubtitle')}</p>

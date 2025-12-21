@@ -1,6 +1,6 @@
 {
-  "name": "Copy of Elora",
-  "description": "A modern, multimodal chat interface powered by Elora's advanced AI models.",
+  "name": "Stilq AI",
+  "description": "A modern, multimodal chat interface powered by Stilq's advanced AI models.",
   "requestFramePermissions": [
     "microphone"
   ]

@@ -11,7 +11,7 @@
     "runtime": "nodejs20"
   },
   "hosting": {
-    "site": "elenor-57bde-fe893",
+    "site": "getstilq",
     "public": "dist",
     "ignore": [
       "firebase.json",
