@@ -10,6 +10,7 @@ import { IMAGE_AGENT_SYSTEM_PROMPT } from "./prompts/image-agent";
 import { RESEARCH_SYSTEM_PROMPT } from "./prompts/research";
 import { PRO25_SYSTEM_PROMPT } from "./prompts/pro25";
 import { PRO3_PREVIEW_SYSTEM_PROMPT } from "./prompts/pro3-preview";
+import { PRO_IMAGE_SYSTEM_PROMPT } from "./prompts/pro-image";
 
 admin.initializeApp();
 
@@ -40,7 +41,7 @@ interface ChatRequest {
     history?: HistoryMessage[];
     newMessage?: string;
     attachments?: ChatAttachment[];
-    modelId?: 'gemini-3-flash-preview' | 'gemini-3-pro-preview' | 'gemini-2.5-pro' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'auto' | 'image-agent' | 'research';
+    modelId?: 'gemini-3-flash-preview' | 'gemini-3-pro-preview' | 'gemini-2.5-pro' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' | 'auto' | 'image-agent' | 'research';
     settings?: ChatSettings;
 }
 
@@ -257,9 +258,10 @@ export const streamChat = onRequest(
       const isFlash = selectedModelId === "gemini-3-flash-preview";
       const isPro = selectedModelId === "gemini-3-pro-preview";
       const isPro25 = selectedModelId === "gemini-2.5-pro" && !isResearch; // PRO_25 manual selection (isResearch is already checked before model ID mapping)
+      const isProImage = selectedModelId === "gemini-3-pro-image-preview";
 
       // Log model selection for debugging
-      console.log(`[MODEL] Selected: ${selectedModelId} | isFlash: ${isFlash} | isPro: ${isPro} | isPro25: ${isPro25} | isResearch: ${isResearch}`);
+      console.log(`[MODEL] Selected: ${selectedModelId} | isFlash: ${isFlash} | isPro: ${isPro} | isPro25: ${isPro25} | isProImage: ${isProImage} | isResearch: ${isResearch}`);
 
       // Add model-specific system prompts
       // User preferences are wrapped in <user_preferences> to clearly separate from system instructions
@@ -620,6 +622,78 @@ export const streamChat = onRequest(
           if (!metadata) {
             metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
           }
+          if (metadata && !sentMetadata) {
+            if (metadata.groundingChunks) {
+              const sources = metadata.groundingChunks
+                .map((c: { web?: { title?: string; uri: string } }) => {
+                  if (c.web) {
+                    return { title: c.web.title || "Web Source", url: c.web.uri };
+                  }
+                  return null;
+                })
+                .filter((s: { title: string; url: string } | null): s is { title: string; url: string } => s !== null);
+
+              if (sources.length > 0) {
+                res.write(`data: ${JSON.stringify({ sources })}\n\n`);
+                if ((res as any).flush) (res as any).flush();
+                sentMetadata = true;
+              }
+            }
+          }
+
+          if ((res as any).flush) (res as any).flush();
+        }
+
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
+        res.end();
+        return;
+      } else if (isProImage) {
+        // PRO IMAGE MODEL: Separate block - native text + image output
+        const proImageAI = getAI();
+
+        const proImageResult = await proImageAI.models.generateContentStream({
+          model: "gemini-3-pro-image-preview",
+          contents,
+          config: {
+            tools: [{ googleSearch: {} }],
+            responseModalities: ['TEXT', 'IMAGE'],
+            topP: 0.95,
+            maxOutputTokens: 32768,
+            systemInstruction: PRO_IMAGE_SYSTEM_PROMPT,
+          },
+        });
+
+        let sentMetadata = false;
+
+        for await (const chunk of proImageResult) {
+          if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
+            const parts = chunk.candidates[0].content.parts;
+            for (const part of parts) {
+              // Handle text
+              if (part.text) {
+                res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
+                if ((res as any).flush) (res as any).flush();
+              }
+
+              // Handle native image output from Pro Image model
+              if ((part as any).inlineData) {
+                const inlineData = (part as any).inlineData;
+                const mimeType = inlineData.mimeType || 'image/png';
+                const base64Data = inlineData.data;
+                console.log(`[DEBUG] PRO IMAGE - native image output:`, mimeType);
+                res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
+                if ((res as any).flush) (res as any).flush();
+              }
+            }
+          }
+
+          // Extract Grounding Metadata (Sources)
+          let metadata = (chunk as any).groundingMetadata;
+          if (!metadata) {
+            metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
+          }
+
           if (metadata && !sentMetadata) {
             if (metadata.groundingChunks) {
               const sources = metadata.groundingChunks

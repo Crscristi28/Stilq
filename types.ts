@@ -10,6 +10,7 @@ export enum ModelId {
   FLASH = 'gemini-3-flash-preview', // The Standard Chat
   PRO = 'gemini-3-pro-preview', // The Brain (low limits)
   PRO_25 = 'gemini-2.5-pro', // Stable Pro (high limits)
+  PRO_IMAGE = 'gemini-3-pro-image-preview', // Creative model (text + image output)
   IMAGE_GEN = 'gemini-2.5-flash-image', // The Artist
   IMAGE_AGENT = 'image-agent', // Flash + Image Tool
   RESEARCH = 'research', // Deep Research (maps to gemini-2.5-pro on backend)
@@ -99,6 +100,12 @@ export const MODELS: ModelConfig[] = [
     name: 'Stilq Artist',
     description: 'Creates images with context awareness',
     icon: 'Image',
+  },
+  {
+    id: ModelId.PRO_IMAGE,
+    name: 'Stilq Creative',
+    description: 'Stories with native image generation',
+    icon: 'Palette',
   },
 ];
 
