@@ -391,8 +391,17 @@ const App: React.FC = () => {
       // Clear any stale debounce timer
       if (dbDebounceTimerRef.current) clearTimeout(dbDebounceTimerRef.current);
 
+      // Strip base64 data from attachments - we have fileUri now, no need to send huge payload
+      const attachmentsForApi = attachments.map(att => ({
+        mimeType: att.mimeType,
+        name: att.name,
+        storageUrl: att.storageUrl,
+        fileUri: att.fileUri,
+        // NO data field - would make request 40MB+ for 8 images!
+      }));
+
       const finalResponseText = await streamChatResponse(
-        messages, finalText, attachments, modelToUse, settings,
+        messages, finalText, attachmentsForApi, modelToUse, settings,
         { 
             showSuggestions: appSettings.showSuggestions,
             userName: appSettings.userName // PASS USER NAME TO BACKEND

@@ -121,9 +121,10 @@ async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, hi
 export const streamChat = onRequest(
   {
     timeoutSeconds: 540,
-    memory: "512MiB",
+    memory: "1GiB",
     cors: true,
     secrets: ["GEMINI_API_KEY"],
+    minInstances: 1,
   },
   async (req, res) => {
     // CORS headers
@@ -855,8 +856,8 @@ export const unifiedUpload = onRequest(
   {
     cors: true,
     secrets: ["GEMINI_API_KEY"],
-    memory: "512MiB",
-    timeoutSeconds: 120,
+    memory: "1GiB",
+    timeoutSeconds: 540,
   },
   async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
