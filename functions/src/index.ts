@@ -1,6 +1,5 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { GoogleGenAI, Part, Content, ThinkingLevel, Type } from "@google/genai";
-import { GoogleAIFileManager } from "@google/generative-ai/server";
 import * as admin from "firebase-admin";
 import * as fs from "fs";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
@@ -10,7 +9,7 @@ import { IMAGE_AGENT_SYSTEM_PROMPT } from "./prompts/image-agent";
 import { RESEARCH_SYSTEM_PROMPT } from "./prompts/research";
 import { PRO25_SYSTEM_PROMPT } from "./prompts/pro25";
 import { PRO3_PREVIEW_SYSTEM_PROMPT } from "./prompts/pro3-preview";
-import { PRO_IMAGE_SYSTEM_PROMPT } from "./prompts/pro-image";
+import { buildProImageContents, handleProImageStream } from "./handlers/pro-image";
 
 admin.initializeApp();
 
@@ -241,6 +240,18 @@ export const streamChat = onRequest(
         })),
         { role: "user", parts },
       ];
+
+      // Log contents for non-Pro Image models (helps debug model switching)
+      console.log(`[CONTENTS BUILD] Model: ${selectedModelId} | History: ${limitedHistory.length} messages | Total contents: ${contents.length}`);
+      contents.forEach((c, i) => {
+        const partTypes = c.parts?.map(p => {
+          if ((p as any).text !== undefined) return 'text';
+          if ((p as any).inlineData) return 'inlineData';
+          if ((p as any).fileData) return 'fileData';
+          return 'unknown';
+        }).join(', ') || 'none';
+        console.log(`[CONTENTS BUILD] Content[${i}] role=${c.role} parts=[${partTypes}]`);
+      });
 
       // --- SYSTEM INSTRUCTION CONSTRUCTION ---
       let systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
@@ -649,75 +660,10 @@ export const streamChat = onRequest(
         res.end();
         return;
       } else if (isProImage) {
-        // PRO IMAGE MODEL: Separate block - native text + image output
+        // PRO IMAGE MODEL: Uses handler with thoughtSignature for multi-turn editing
         const proImageAI = getAI();
-
-        const proImageResult = await proImageAI.models.generateContentStream({
-          model: "gemini-3-pro-image-preview",
-          contents,
-          config: {
-            tools: [{ googleSearch: {} }],
-            responseModalities: ['TEXT', 'IMAGE'],
-            topP: 0.95,
-            maxOutputTokens: 32768,
-            systemInstruction: PRO_IMAGE_SYSTEM_PROMPT,
-          },
-        });
-
-        let sentMetadata = false;
-
-        for await (const chunk of proImageResult) {
-          if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
-            const parts = chunk.candidates[0].content.parts;
-            for (const part of parts) {
-              // Handle text
-              if (part.text) {
-                res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
-                if ((res as any).flush) (res as any).flush();
-              }
-
-              // Handle native image output from Pro Image model
-              if ((part as any).inlineData) {
-                const inlineData = (part as any).inlineData;
-                const mimeType = inlineData.mimeType || 'image/png';
-                const base64Data = inlineData.data;
-                console.log(`[DEBUG] PRO IMAGE - native image output:`, mimeType);
-                res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
-                if ((res as any).flush) (res as any).flush();
-              }
-            }
-          }
-
-          // Extract Grounding Metadata (Sources)
-          let metadata = (chunk as any).groundingMetadata;
-          if (!metadata) {
-            metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
-          }
-
-          if (metadata && !sentMetadata) {
-            if (metadata.groundingChunks) {
-              const sources = metadata.groundingChunks
-                .map((c: { web?: { title?: string; uri: string } }) => {
-                  if (c.web) {
-                    return { title: c.web.title || "Web Source", url: c.web.uri };
-                  }
-                  return null;
-                })
-                .filter((s: { title: string; url: string } | null): s is { title: string; url: string } => s !== null);
-
-              if (sources.length > 0) {
-                res.write(`data: ${JSON.stringify({ sources })}\n\n`);
-                if ((res as any).flush) (res as any).flush();
-                sentMetadata = true;
-              }
-            }
-          }
-
-          if ((res as any).flush) (res as any).flush();
-        }
-
-        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-        if ((res as any).flush) (res as any).flush();
+        const proImageContents = await buildProImageContents(history || [], newMessage || "", attachments || []);
+        await handleProImageStream(proImageAI, proImageContents, res);
         res.end();
         return;
       } else {
@@ -759,7 +705,6 @@ export const streamChat = onRequest(
         }
 
         console.log(`[DEBUG] Model: ${selectedModelId}, isPro: ${isPro}, isPro25: ${isPro25}, isFlash: ${isFlash}`);
-        console.log(`[DEBUG] ModelConfig:`, JSON.stringify(modelConfig));
 
         // All chat models use API Key
         const chatAI = getAI();
@@ -979,7 +924,7 @@ export const unifiedUpload = onRequest(
       const tempPath = `/tmp/${Date.now()}_${fileName}`;
       fs.writeFileSync(tempPath, buffer);
 
-      const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY!);
+      const ai = getAI();
       const bucket = admin.storage().bucket();
 
       // PARALLEL UPLOAD: Firebase Storage (for UI) + Google AI File API (for Gemini)
@@ -989,10 +934,13 @@ export const unifiedUpload = onRequest(
           destination: `attachments/${Date.now()}_${fileName}`,
           metadata: { contentType: mimeType }
         }),
-        // Google AI File API upload (normalized MIME type for code/text files)
-        fileManager.uploadFile(tempPath, {
-          mimeType: getFileApiMimeType(mimeType),
-          displayName: fileName,
+        // Google AI File API upload using @google/genai SDK
+        ai.files.upload({
+          file: tempPath,
+          config: {
+            mimeType: getFileApiMimeType(mimeType),
+            displayName: fileName,
+          }
         })
       ]);
 
@@ -1005,11 +953,11 @@ export const unifiedUpload = onRequest(
       // Cleanup temp file
       fs.unlinkSync(tempPath);
 
-      console.log(`[UnifiedUpload] Success: ${fileName} | storageUrl: ${storageUrl.substring(0, 50)}... | fileUri: ${aiUploadResult.file.uri}`);
+      console.log(`[UnifiedUpload] Success: ${fileName} | storageUrl: ${storageUrl.substring(0, 50)}... | fileUri: ${aiUploadResult.uri}`);
 
       res.json({
         storageUrl,
-        fileUri: aiUploadResult.file.uri
+        fileUri: aiUploadResult.uri
       });
 
     } catch (error: unknown) {
