@@ -71,19 +71,22 @@ export async function buildProImageContents(
             }
         }
 
+        // Strip [IMAGE:X] and [GRAPH:X] markers from text before sending to model
+        const cleanText = (msg.text || "").replace(/\n?\[(?:IMAGE|GRAPH):\d+\]\n?/g, '').trim();
+
         // Add text part (with signature for model)
         if (msg.role === 'model') {
             msgParts.push({
-                text: msg.text || "",
+                text: cleanText,
                 thoughtSignature: "skip_thought_signature_validator"
             } as Part);
-        } else if (msg.text && msg.text.trim()) {
-            msgParts.push({ text: msg.text });
+        } else if (cleanText) {
+            msgParts.push({ text: cleanText });
         }
 
         // Ensure at least one part exists
         if (msgParts.length === 0) {
-            msgParts.push({ text: msg.text || "" });
+            msgParts.push({ text: cleanText });
         }
 
         contents.push({ role: msg.role, parts: msgParts });

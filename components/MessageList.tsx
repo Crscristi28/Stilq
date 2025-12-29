@@ -278,15 +278,17 @@ const MessageItem: React.FC<MessageItemProps> = ({
             ) : (
                 <>
                     <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
-                         {/* Render text with inline graphs */}
+                         {/* Render text with inline graphs AND images */}
                          {(() => {
-                             // Split text by [GRAPH:X] markers
-                             const parts = msg.text.split(/(\[GRAPH:\d+\])/);
+                             // Split text by [GRAPH:X] and [IMAGE:X] markers
+                             const parts = msg.text.split(/(\[(?:GRAPH|IMAGE):\d+\])/);
                              return parts.map((part, idx) => {
-                                 const match = part.match(/\[GRAPH:(\d+)\]/);
-                                 if (match) {
+                                 const graphMatch = part.match(/\[GRAPH:(\d+)\]/);
+                                 const imageMatch = part.match(/\[IMAGE:(\d+)\]/);
+
+                                 if (graphMatch) {
                                      // Render graph inline
-                                     const graphIndex = parseInt(match[1], 10);
+                                     const graphIndex = parseInt(graphMatch[1], 10);
                                      const att = msg.attachments?.[graphIndex];
                                      if (att && att.isGraph) {
                                          const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
@@ -322,6 +324,46 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                      }
                                      return null;
                                  }
+
+                                 if (imageMatch) {
+                                     // Render image inline
+                                     const imageIndex = parseInt(imageMatch[1], 10);
+                                     const att = msg.attachments?.[imageIndex];
+                                     if (att && att.mimeType?.startsWith('image/')) {
+                                         const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
+                                         if (att.isPlaceholder) {
+                                             return (
+                                                 <div
+                                                     key={idx}
+                                                     className="my-4 relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] animate-pulse"
+                                                     style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                                 >
+                                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                                         <Sparkles className="text-blue-500 animate-pulse" size={24} />
+                                                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating image...</span>
+                                                     </div>
+                                                 </div>
+                                             );
+                                         }
+                                         if (att.storageUrl || att.data) {
+                                             return (
+                                                 <div
+                                                     key={idx}
+                                                     className="my-4 relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e]"
+                                                     style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                                 >
+                                                     <img
+                                                         src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                                         alt="Generated image"
+                                                         className="w-full h-full object-contain"
+                                                     />
+                                                 </div>
+                                             );
+                                         }
+                                     }
+                                     return null;
+                                 }
+
                                  // Render text part
                                  return part ? <MarkdownRenderer key={idx} content={part} /> : null;
                              });
@@ -333,52 +375,69 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 </>
             )}
 
-            {/* Generated Images (non-graph attachments only - graphs are inline) */}
-            {msg.attachments && msg.attachments.filter(a => !a.isGraph).length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-3">
-                    {msg.attachments.filter(a => !a.isGraph).map((att: Attachment, idx: number) => {
-                        if (!att.mimeType?.startsWith('image/')) return null;
+            {/* Gallery: Only images WITHOUT inline markers (graphs + inline images are already rendered above) */}
+            {msg.attachments && (() => {
+                // Find indices of images that have inline markers
+                const inlineIndices = new Set<number>();
+                const markerRegex = /\[IMAGE:(\d+)\]/g;
+                let match;
+                while ((match = markerRegex.exec(msg.text)) !== null) {
+                    inlineIndices.add(parseInt(match[1], 10));
+                }
 
-                        // Convert "16:9" to "16/9" for CSS aspect-ratio
-                        const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
+                // Filter: non-graph, non-inline images only
+                const galleryAttachments = msg.attachments.filter((att, attIdx) =>
+                    !att.isGraph && !inlineIndices.has(attIdx)
+                );
 
-                        // Placeholder skeleton - fixed width 400px with aspect-ratio for height
-                        if (att.isPlaceholder) {
-                            return (
-                                <div
-                                    key={idx}
-                                    className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] animate-pulse"
-                                    style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
-                                >
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                                        <Sparkles className="text-blue-500 animate-pulse" size={24} />
-                                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating image...</span>
+                if (galleryAttachments.length === 0) return null;
+
+                return (
+                    <div className="mt-4 flex flex-wrap gap-3">
+                        {galleryAttachments.map((att: Attachment, displayIdx: number) => {
+                            if (!att.mimeType?.startsWith('image/')) return null;
+
+                            // Convert "16:9" to "16/9" for CSS aspect-ratio
+                            const cssRatio = (att.aspectRatio || '1:1').replace(':', '/');
+
+                            // Placeholder skeleton - fixed width 400px with aspect-ratio for height
+                            if (att.isPlaceholder) {
+                                return (
+                                    <div
+                                        key={displayIdx}
+                                        className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e] animate-pulse"
+                                        style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                    >
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                            <Sparkles className="text-blue-500 animate-pulse" size={24} />
+                                            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating image...</span>
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        }
+                                );
+                            }
 
-                        // Real image - same fixed width to prevent layout shift
-                        if (att.storageUrl || att.data) {
-                            return (
-                                <div
-                                    key={idx}
-                                    className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e]"
-                                    style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
-                                >
-                                    <img
-                                        src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
-                                        alt="Generated image"
-                                        className="w-full h-full object-contain"
-                                    />
-                                </div>
-                            );
-                        }
+                            // Real image - same fixed width to prevent layout shift
+                            if (att.storageUrl || att.data) {
+                                return (
+                                    <div
+                                        key={displayIdx}
+                                        className="relative rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1a1b1e]"
+                                        style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
+                                    >
+                                        <img
+                                            src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                            alt="Generated image"
+                                            className="w-full h-full object-contain"
+                                        />
+                                    </div>
+                                );
+                            }
 
-                        return null;
-                    })}
-                </div>
-            )}
+                            return null;
+                        })}
+                    </div>
+                );
+            })()}
 
             {/* Suggestions */}
             {!msg.isStreaming && msg.suggestions && msg.suggestions.length > 0 && (

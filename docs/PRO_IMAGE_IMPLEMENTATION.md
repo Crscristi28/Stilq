@@ -14,7 +14,8 @@
 5. [User Attachment Handling](#user-attachment-handling)
 6. [Dual Upload Pattern](#dual-upload-pattern)
 7. [Model Limits](#model-limits)
-8. [Code Reference](#code-reference)
+8. [Inline Image Markers](#inline-image-markers)
+9. [Code Reference](#code-reference)
 
 ---
 
@@ -290,19 +291,132 @@ if ((part as any).inlineData && !isThought) {
 
 ---
 
+## Inline Image Markers
+
+Pro Image can generate images **inline within text** - the model decides where images should appear in articles, reports, and other content. This is a unique capability not available in other AI assistants.
+
+### How It Works
+
+1. **Model generates text + image** in the response stream
+2. **Backend sends image event** with `storageUrl`, `fileUri`, `aspectRatio`
+3. **Frontend receives image**, adds `[IMAGE:X]` marker to text
+4. **Text is saved to DB** with markers (e.g., `Here is the article...\n[IMAGE:0]\n...more text`)
+5. **On render**, markers are parsed and images displayed inline
+
+### Marker Format
+
+```
+[IMAGE:0]  - First image in attachments array
+[IMAGE:1]  - Second image
+[GRAPH:0]  - First graph (from code execution)
+```
+
+### Backend: Strip Markers from History
+
+Before sending history to the model, we must strip markers (model shouldn't see them):
+
+```typescript
+// In pro-image.ts - buildProImageContents()
+const cleanText = (msg.text || "")
+    .replace(/\n?\[(?:IMAGE|GRAPH):\d+\]\n?/g, '')
+    .trim();
+```
+
+### Frontend: Add Markers to Stream
+
+```typescript
+// In geminiService.ts
+if (data.image) {
+    const imageIndex = await onImage(data.image);
+    const marker = `\n[IMAGE:${imageIndex}]\n`;
+    fullText += marker;
+    onChunk(marker);
+}
+```
+
+### Frontend: Render Inline Images
+
+```typescript
+// In MessageList.tsx - split text by markers
+const parts = msg.text.split(/(\[(?:GRAPH|IMAGE):\d+\])/);
+
+return parts.map((part, idx) => {
+    const imageMatch = part.match(/\[IMAGE:(\d+)\]/);
+
+    if (imageMatch) {
+        const imageIndex = parseInt(imageMatch[1], 10);
+        const att = msg.attachments?.[imageIndex];
+        if (att?.storageUrl) {
+            return <img key={idx} src={att.storageUrl} />;
+        }
+        return null;
+    }
+
+    return <MarkdownRenderer key={idx} content={part} />;
+});
+```
+
+### Gallery Deduplication
+
+Images with inline markers are NOT shown in the gallery (prevents duplicates):
+
+```typescript
+// Find indices of images that have inline markers
+const inlineIndices = new Set<number>();
+const markerRegex = /\[IMAGE:(\d+)\]/g;
+let match;
+while ((match = markerRegex.exec(msg.text)) !== null) {
+    inlineIndices.add(parseInt(match[1], 10));
+}
+
+// Filter: non-graph, non-inline images only
+const galleryAttachments = msg.attachments.filter((att, attIdx) =>
+    !att.isGraph && !inlineIndices.has(attIdx)
+);
+```
+
+### Flow Summary
+
+| Step | Location | Action |
+|------|----------|--------|
+| 1 | Backend (pro-image.ts) | Model generates image + text |
+| 2 | Backend (pro-image.ts) | dualUpload → sends `storageUrl` + `fileUri` |
+| 3 | Frontend (geminiService.ts) | Receives image, adds `[IMAGE:X]` marker |
+| 4 | Frontend (App.tsx) | Stores attachment with index |
+| 5 | Firestore | Saves text with markers + attachments array |
+| 6 | Frontend (MessageList.tsx) | Parses markers, renders inline |
+| 7 | Frontend (MessageList.tsx) | Gallery shows only unmarked images |
+
+### Use Cases
+
+- Educational articles with illustrations
+- Blog posts with inline images
+- Reports with data visualizations
+- Step-by-step guides with screenshots
+- Stories with scene illustrations
+
+---
+
 ## Code Reference
 
 ### File Structure
 
 ```
-functions/src/
+functions/src/                          # Backend
 ├── handlers/
-│   └── pro-image.ts      # Pro Image handler
+│   └── pro-image.ts                    # Pro Image handler (strips markers from history)
 ├── utils/
-│   └── image.ts          # Image utilities (dualUpload, fetchImageAsBase64)
+│   └── image.ts                        # Image utilities (dualUpload, fetchImageAsBase64)
 ├── prompts/
-│   └── pro-image.ts      # System prompt
-└── index.ts              # Main endpoint (routes to Pro Image)
+│   └── pro-image.ts                    # System prompt
+└── index.ts                            # Main endpoint (routes to Pro Image)
+
+src/                                    # Frontend
+├── services/
+│   └── geminiService.ts                # Adds [IMAGE:X] markers to stream
+├── components/
+│   └── MessageList.tsx                 # Parses markers, renders inline images
+└── App.tsx                             # onImage callback returns index
 ```
 
 ### Key Functions
@@ -314,6 +428,9 @@ functions/src/
 | `fetchImageAsBase64` | utils/image.ts | Fetch URL → base64 |
 | `dualUpload` | utils/image.ts | Upload to Storage + File API |
 | `detectAspectRatio` | utils/image.ts | Get aspect ratio from base64 |
+| `streamChatResponse` | services/geminiService.ts | Frontend: Add IMAGE markers to stream |
+| `onImage` callback | App.tsx | Frontend: Store attachment, return index |
+| `MessageItem` | components/MessageList.tsx | Frontend: Parse markers, render inline |
 
 ### Types
 
@@ -368,6 +485,7 @@ interface ChatAttachment {
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2025-12-29 | Initial implementation with thoughtSignature hack |
+| 1.1.0 | 2025-12-29 | Added inline image markers for text-embedded images |
 
 ---
 

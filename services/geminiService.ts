@@ -20,7 +20,7 @@ export const streamChatResponse = async (
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
   onSuggestions?: (suggestions: string[]) => void,
-  onImage?: (image: { mimeType: string; data: string; aspectRatio?: string }) => Promise<void>,
+  onImage?: (image: { mimeType: string; data: string; aspectRatio?: string; storageUrl?: string; fileUri?: string }) => Promise<number>,
   onGraph?: (graph: { mimeType: string; data: string }) => Promise<number>,
   onRoutedModel?: (model: string) => void,
   onGeneratingImage?: () => void
@@ -107,13 +107,17 @@ export const streamChatResponse = async (
               onChunk(data.text);
             }
 
-            // Handle image event (from image-agent) - AWAIT the Storage upload!
+            // Handle image event (from image-agent or pro-image)
+            // Marker is added HERE so fullText includes it (saved to DB correctly)
             if (data.image) {
               console.log("GeminiService: RECEIVED IMAGE EVENT!", data.image.mimeType);
               if (onImage) {
                 console.log("GeminiService: Calling onImage callback...");
-                await onImage(data.image);
-                console.log("GeminiService: onImage callback DONE");
+                const imageIndex = await onImage(data.image);
+                const marker = `\n[IMAGE:${imageIndex}]\n`;
+                fullText += marker;
+                onChunk(marker);
+                console.log("GeminiService: onImage callback DONE, marker:", marker);
               } else {
                 console.log("GeminiService: NO onImage callback!");
               }

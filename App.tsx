@@ -441,38 +441,55 @@ const App: React.FC = () => {
                 return { ...prev, suggestions: streamSuggestionsRef.current };
             });
         },
+        // onImage - returns index immediately for inline markers
+        // If backend provides storageUrl, use it; otherwise upload in background
         async (imageData) => {
-            console.log("APP: onImage called!", imageData.mimeType);
+            const imageIndex = streamAttachmentsRef.current.length;
+            console.log("APP: onImage called!", imageData.mimeType, "index:", imageIndex);
+
             if (user?.uid && sessionId) {
-                // 1. Create placeholder immediately with aspect ratio
-                const placeholder: Attachment = {
-                    mimeType: imageData.mimeType,
-                    isPlaceholder: true,
-                    aspectRatio: imageData.aspectRatio || settings.aspectRatio || '1:1'
-                };
+                const aspectRatio = imageData.aspectRatio || settings.aspectRatio || '1:1';
 
-                // 2. Add placeholder to show skeleton immediately
-                streamAttachmentsRef.current = [...streamAttachmentsRef.current, placeholder];
+                // Check if backend already uploaded (Pro Image sends storageUrl/fileUri)
+                if (imageData.storageUrl) {
+                    // Backend already uploaded - use directly
+                    const attachment: Attachment = {
+                        mimeType: imageData.mimeType,
+                        storageUrl: imageData.storageUrl,
+                        fileUri: imageData.fileUri,
+                        aspectRatio
+                    };
+                    streamAttachmentsRef.current = [...streamAttachmentsRef.current, attachment];
+                    console.log("APP: Using backend storageUrl:", imageData.storageUrl);
+                } else {
+                    // No storageUrl - need to upload (legacy handlers)
+                    const placeholder: Attachment = {
+                        mimeType: imageData.mimeType,
+                        isPlaceholder: true,
+                        aspectRatio
+                    };
+                    streamAttachmentsRef.current = [...streamAttachmentsRef.current, placeholder];
 
-                try {
-                    console.log("APP: Uploading to Storage...");
-                    const attachment = await uploadGeneratedImage(imageData, user.uid, sessionId);
-                    console.log("APP: Upload done, storageUrl:", attachment.storageUrl);
-
-                    // 3. Replace placeholder with real attachment (keep aspectRatio)
-                    streamAttachmentsRef.current = streamAttachmentsRef.current.map(att =>
-                        att === placeholder
-                            ? { ...attachment, aspectRatio: imageData.aspectRatio || settings.aspectRatio || '1:1' }
-                            : att
-                    );
-                } catch (err) {
-                    console.error("APP: Failed to upload generated image:", err);
-                    // Remove placeholder on error
-                    streamAttachmentsRef.current = streamAttachmentsRef.current.filter(att => att !== placeholder);
+                    // Upload in background - don't block streaming
+                    uploadGeneratedImage(imageData, user.uid, sessionId)
+                        .then(attachment => {
+                            console.log("APP: Upload done, storageUrl:", attachment.storageUrl);
+                            streamAttachmentsRef.current = streamAttachmentsRef.current.map(att =>
+                                att === placeholder
+                                    ? { ...attachment, aspectRatio }
+                                    : att
+                            );
+                        })
+                        .catch(err => {
+                            console.error("APP: Failed to upload generated image:", err);
+                            streamAttachmentsRef.current = streamAttachmentsRef.current.filter(att => att !== placeholder);
+                        });
                 }
             } else {
                 console.log("APP: Missing user or sessionId!", user?.uid, sessionId);
             }
+
+            return imageIndex;
         },
         // onGraph - graphs from codeExecution (rendered inline with marker)
         // Returns index immediately, upload runs in background (non-blocking)
