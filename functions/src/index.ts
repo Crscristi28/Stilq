@@ -919,9 +919,16 @@ export const unifiedUpload = onRequest(
         return;
       }
 
-      // Decode base64 to buffer and write to temp file
+      // Sanitize filename FIRST - Google AI SDK uses file path in HTTP headers (must be ASCII)
+      const timestamp = Date.now();
+      const sanitizedFileName = `${timestamp}_${fileName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')  // Remove diacritics
+        .replace(/[^\x00-\x7F]/g, '_')}`; // Replace remaining non-ASCII with underscore
+
+      // Decode base64 to buffer and write to temp file (use sanitized name!)
       const buffer = Buffer.from(fileBufferBase64, 'base64');
-      const tempPath = `/tmp/${Date.now()}_${fileName}`;
+      const tempPath = `/tmp/${sanitizedFileName}`;
       fs.writeFileSync(tempPath, buffer);
 
       const ai = getAI();
@@ -929,9 +936,9 @@ export const unifiedUpload = onRequest(
 
       // PARALLEL UPLOAD: Firebase Storage (for UI) + Google AI File API (for Gemini)
       const [fbUploadResult, aiUploadResult] = await Promise.all([
-        // Firebase Storage upload
+        // Firebase Storage upload (keeps original fileName - Firebase supports UTF-8)
         bucket.upload(tempPath, {
-          destination: `attachments/${Date.now()}_${fileName}`,
+          destination: `attachments/${timestamp}_${fileName}`,
           metadata: { contentType: mimeType }
         }),
         // Google AI File API upload using @google/genai SDK
@@ -939,7 +946,7 @@ export const unifiedUpload = onRequest(
           file: tempPath,
           config: {
             mimeType: getFileApiMimeType(mimeType),
-            displayName: fileName,
+            displayName: sanitizedFileName,
           }
         })
       ]);

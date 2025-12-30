@@ -3,12 +3,13 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { ChatMessage, Role, UserProfile, Attachment, Source } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import Indicators from './Indicators';
-import { 
-  AlertCircle, Sparkles, Copy, Check, 
-  FileText, Pencil, Volume2, Square, 
-  FileCode, FileSpreadsheet, File, Reply, Lightbulb, Settings2, X, Share2, Globe, ExternalLink, ChevronDown, ArrowDown
+import {
+  AlertCircle, Sparkles, Copy, Check,
+  FileText, Pencil, Volume2, Square,
+  FileCode, FileSpreadsheet, File, Reply, Lightbulb, Settings2, X, Share2, Globe, ExternalLink, ChevronDown, ArrowDown, Printer
 } from 'lucide-react';
 import { translations, Language } from '../translations';
+import { printMessage } from '../utils/printMessage';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -481,6 +482,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                  <button onClick={() => speakingId === msg.id ? onHandleStopSpeak() : onHandleSpeak(msg.text, msg.id)} className={`p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-all ${speakingId === msg.id ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'}`}>{speakingId === msg.id ? <Square size={14} fill="currentColor"/> : <Volume2 size={14}/>}</button>
                              </div>
                              <button onClick={() => onHandleShare(msg.text)} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-all" title="Share"><Share2 size={14}/></button>
+                             <button onClick={() => printMessage(msg)} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-all" title="Print"><Printer size={14}/></button>
                              <div className="relative">
                                 <button onClick={() => onToggleTTSSettings(msg.id)} className={`p-1.5 rounded-full transition-all ${showTTSSettingsId === msg.id ? 'text-blue-500 bg-blue-500/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}`}><Settings2 size={14}/></button>
                                 {showTTSSettingsId === msg.id && (
