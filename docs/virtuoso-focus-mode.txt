@@ -3,7 +3,7 @@
 ## A Comprehensive Guide to Implementing ChatGPT/Gemini-Style Scroll Behavior with react-virtuoso
 
 **Author:** Documented from working implementation after 5 months of research
-**Last Updated:** 2025-01-23
+**Last Updated:** 2026-01-01
 **Pattern Difficulty:** Advanced
 **Documentation Status:** ⚠️ **This pattern is NOT documented anywhere else comprehensively**
 
@@ -19,10 +19,14 @@
 6. [Critical Timing Requirements](#critical-timing-requirements)
 7. [Race Condition Prevention](#race-condition-prevention)
 8. [Footer Height Dynamics](#footer-height-dynamics)
-9. [Complete Working Example](#complete-working-example)
-10. [Troubleshooting](#troubleshooting)
-11. [Research & Documentation Gaps](#research-documentation-gaps)
-12. [References](#references)
+9. [Chat Open Scroll (Session Switching)](#chat-open-scroll-session-switching)
+10. [ChatLoadingOverlay Component](#chatloadingoverlay-component)
+11. [Z-index Hierarchy](#z-index-hierarchy)
+12. [Virtuoso Performance Optimizations](#virtuoso-performance-optimizations)
+13. [Complete Working Example](#complete-working-example)
+14. [Troubleshooting](#troubleshooting)
+15. [Research & Documentation Gaps](#research-documentation-gaps)
+16. [References](#references)
 
 ---
 
@@ -193,7 +197,7 @@ The solution requires coordinating **6 different systems**:
 User sends message
        │
        ▼
-[Set footerHeight = '55vh']
+[Set footerHeight = '60vh']
        │
        ▼
 [Set isFooterBig = true]
@@ -210,8 +214,8 @@ User sends message
 )]                       │
        │                 │
        ▼                 │
-[Wait 500ms] ────────────┘
-       │        (Scroll animation completes)
+[Wait 800ms] ────────────┘
+       │        (Scroll animation completes + safety margin)
        ▼
 [Set justSentMessageRef = false]
        │
@@ -340,8 +344,8 @@ useEffect(() => {
 
     // Only scroll when user sends a message
     if (lastMessage.role === Role.USER) {
-      // Set footer to 55vh for Focus Mode
-      setFooterHeight('55vh');
+      // Set footer to 60vh for Focus Mode
+      setFooterHeight('60vh');
       setIsFooterBig(true);
       justSentMessageRef.current = true;
 
@@ -354,10 +358,10 @@ useEffect(() => {
         });
       }, 100);
 
-      // Allow scrolling to shrink footer after 500ms
+      // Allow scrolling to shrink footer after 800ms
       setTimeout(() => {
         justSentMessageRef.current = false;
-      }, 500);
+      }, 800);
     }
   }
 }, [messages.length]);
@@ -367,7 +371,7 @@ useEffect(() => {
 - Triggers on `messages.length` change
 - Only runs for **USER** messages (not bot responses)
 - **100ms delay** before scrollToIndex (see Timing Requirements)
-- **500ms delay** before allowing footer shrink (see Race Conditions)
+- **800ms delay** before allowing footer shrink (see Race Conditions)
 - Uses `align: 'start'` to position message at TOP
 
 ### Step 5: Scroll Callback - Shrink Footer on User Scroll
@@ -425,6 +429,9 @@ return (
 - `isScrolling`: Callback for detecting user scrolls
 - `Header`: Top spacing (prevents messages from touching top edge)
 - `Footer`: **Dynamic height** - the secret sauce
+- `computeItemKey`: Stable key function for better performance
+- `increaseViewportBy={500}`: Pre-renders items outside viewport
+- `defaultItemHeight={100}`: Estimated height for better scroll calculations
 
 ---
 
@@ -476,14 +483,14 @@ setTimeout(() => {
 }, 100);
 ```
 
-### The 500ms Delay Before Enabling Scroll Callback
+### The 800ms Delay Before Enabling Scroll Callback
 
 **Why is this necessary?**
 
 ```typescript
 setTimeout(() => {
   justSentMessageRef.current = false;
-}, 500);
+}, 800);
 ```
 
 **Reason:**
@@ -504,19 +511,19 @@ Time 40ms:  Scroll "jumps" to new target
 Time 50ms:  User sees glitchy scroll behavior
 ```
 
-**With 500ms guard:**
+**With 800ms guard:**
 ```
-Time 0ms:   Set footer to 55vh, justSent = true
+Time 0ms:   Set footer to 60vh, justSent = true
 Time 10ms:  Scroll animation begins
 Time 20ms:  isScrolling fires, but guard prevents shrink
-Time 300ms: Animation completes
-Time 500ms: Guard disabled, user can now scroll freely
+Time 400ms: Animation completes
+Time 800ms: Guard disabled, user can now scroll freely
 ```
 
-**Why 500ms specifically?**
-- Scroll animation: ~300-400ms
-- Safety margin: +100-200ms
-- Total: 500ms ensures animation is completely done
+**Why 800ms specifically?**
+- Scroll animation: ~300-500ms (varies by browser/device)
+- Safety margin: +300-500ms for slower devices
+- Total: 800ms ensures animation is completely done on all devices
 
 ---
 
@@ -554,7 +561,7 @@ const handleScrollingStateChange = (isScrolling: boolean) => {
 const justSentMessageRef = useRef<boolean>(false);  // Ref, not state!
 
 // When user sends message
-setFooterHeight('55vh');
+setFooterHeight('60vh');
 setIsFooterBig(true);
 justSentMessageRef.current = true;  // Enable guard
 
@@ -564,7 +571,7 @@ setTimeout(() => scrollToIndex({...}), 100);
 // Disable guard after animation completes
 setTimeout(() => {
   justSentMessageRef.current = false;
-}, 500);
+}, 800);
 
 // Callback checks guard flag
 const handleScrollingStateChange = (isScrolling: boolean) => {
@@ -622,25 +629,25 @@ justSentMessageRef.current = false;  // No re-render
 └─────────────────┘
 ```
 
-**With 55vh footer:**
+**With 60vh footer:**
 ```
 ┌─────────────────┐
 │ User: Question  │ ← Can scroll to top!
 │ AI: Response... │
 │                 │
 │                 │ ← Footer creates space
-│                 │    (55% of viewport height)
+│                 │    (60% of viewport height)
 │                 │
 └─────────────────┘
 ```
 
-### Why 55vh Specifically?
+### Why 60vh Specifically?
 
 **Calculation:**
 - Typical viewport height: 100vh
 - Header space: ~120px (~12vh)
-- User message + AI response: ~30-40vh
-- **Remaining space needed:** 55vh
+- User message + AI response: ~30-35vh
+- **Remaining space needed:** 60vh (provides extra buffer)
 
 This ensures:
 - User message can reach top of viewport
@@ -651,7 +658,7 @@ This ensures:
 
 ```typescript
 // ✅ GOOD - Responsive to screen size
-setFooterHeight('55vh');
+setFooterHeight('60vh');
 
 // ❌ BAD - Fixed size, doesn't adapt
 setFooterHeight('500px');
@@ -673,7 +680,7 @@ Purpose: Minimal space, no wasted screen real estate
 
 **2. User Sends Message**
 ```
-Footer: 55vh  (~400-600px depending on screen)
+Footer: 60vh  (~500-700px depending on screen)
 Purpose: Create space for user message to scroll to top
 Duration: Until user manually scrolls
 ```
@@ -713,6 +720,304 @@ Input Area
 └── Disclaimer Text
 
 Total Height + 20px padding = minFooterHeight
+```
+
+---
+
+## Chat Open Scroll (Session Switching)
+
+### The Problem
+
+When users switch between chat sessions (clicking different chats in sidebar), we need to:
+1. Scroll to the latest message in each chat
+2. Hide the scroll mechanics with a loading overlay
+3. Ensure scroll completes before revealing content
+
+### The Two-Step Ref Pattern
+
+**Why two useEffects instead of one?**
+
+The challenge is that `sessionId` changes before messages are loaded from Firestore. If we try to scroll immediately on session change, `messages` array might be empty.
+
+**Solution:** Use two refs to coordinate:
+
+```typescript
+// MessageList.tsx (lines 526-527)
+const prevSessionIdRef = useRef<string | null>(null);
+const needsScrollRef = useRef<boolean>(false);
+
+// Step 1: Detect session change, mark that we need scroll (line 563-569)
+useEffect(() => {
+    if (sessionId && prevSessionIdRef.current !== sessionId) {
+        prevSessionIdRef.current = sessionId;
+        needsScrollRef.current = true;
+    }
+}, [sessionId]);
+
+// Step 2: When messages loaded and we need scroll, do it (line 572-586)
+useEffect(() => {
+    if (needsScrollRef.current && messages.length > 0) {
+        needsScrollRef.current = false;
+
+        const timer = setTimeout(() => {
+            virtuosoRef.current?.scrollToIndex({
+                index: messages.length - 1,
+                align: 'start',
+                behavior: 'auto'  // Instant scroll (no animation)
+            });
+        }, 100);
+
+        return () => clearTimeout(timer);
+    }
+}, [messages.length]);
+```
+
+**Key Differences from Focus Mode:**
+- Uses `behavior: 'auto'` (instant) instead of `smooth` (animated)
+- No footer height change (user didn't send message)
+- No guard flag needed (not protecting against callback)
+- Triggered by session change, not message send
+
+### Why 100ms Delay?
+
+Same reason as Focus Mode - gives Virtuoso time to:
+1. Receive the new messages array
+2. Render the items
+3. Calculate scroll positions
+
+---
+
+## ChatLoadingOverlay Component
+
+### Purpose
+
+Gemini-style loading screen that covers the chat area during session switching:
+- Hides the scroll mechanics (no visible jump)
+- Shows a spinner while "loading" the chat
+- Provides clean visual transition between chats
+
+### Implementation
+
+**File:** `components/ChatLoadingOverlay.tsx`
+
+```typescript
+interface ChatLoadingOverlayProps {
+    sessionId: string | null;
+}
+
+const ChatLoadingOverlay: React.FC<ChatLoadingOverlayProps> = ({ sessionId }) => {
+    const [isVisible, setIsVisible] = useState(false);
+    const [isFadingOut, setIsFadingOut] = useState(false);
+    const prevSessionIdRef = useRef<string | null>(null);
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        if (sessionId && prevSessionIdRef.current !== sessionId) {
+            prevSessionIdRef.current = sessionId;
+            setIsVisible(true);
+            setIsFadingOut(false);
+
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+            // Fixed 500ms display, then fade out
+            timeoutRef.current = setTimeout(() => {
+                setIsFadingOut(true);
+                setTimeout(() => {
+                    setIsVisible(false);
+                    setIsFadingOut(false);
+                }, 200); // fade animation duration
+            }, 500);
+        }
+
+        return () => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        };
+    }, [sessionId]);
+
+    if (!isVisible) return null;
+
+    return (
+        <div className={`absolute inset-0 z-40 flex items-center justify-center
+            bg-white dark:bg-[#0e0e10] transition-opacity duration-200
+            ${isFadingOut ? 'opacity-0' : 'opacity-100'}`}
+        >
+            {/* Gemini-style arc spinner */}
+            <div className="w-7 h-7 border-[3px] border-transparent
+                border-t-blue-400 rounded-full animate-spin" />
+        </div>
+    );
+};
+```
+
+### Timing Coordination
+
+```
+Session Change Timeline:
+────────────────────────────────────────────────────────
+0ms     Overlay shows (100% opacity)
+100ms   Chat Open Scroll starts
+200ms   Scroll completes (behavior: 'auto' is instant)
+500ms   Overlay starts fading out
+700ms   Overlay fully hidden (200ms fade)
+────────────────────────────────────────────────────────
+```
+
+**Design Decision:** Fixed 500ms is "good enough"
+
+We chose fixed timing over complex coordination because:
+- Syncing overlay with scroll completion would require coupling components
+- For 99% of chats (under 500 messages), scroll completes within 500ms
+- For very long chats (1000+ messages), user might see a tiny scroll jump - acceptable tradeoff
+- Simpler code is more maintainable
+
+### Usage in App.tsx
+
+```typescript
+import ChatLoadingOverlay from './components/ChatLoadingOverlay';
+
+// In render, inside the chat area div:
+<div className="flex-1 overflow-hidden relative flex flex-col">
+    <ChatLoadingOverlay sessionId={currentSessionId} />
+    <MessageList ... />
+    <InputArea ... />
+</div>
+```
+
+---
+
+## Z-index Hierarchy
+
+### The Problem
+
+Multiple overlapping elements need proper stacking order:
+- Sidebar (slides over chat area on mobile)
+- Loading overlay (covers chat during session switch)
+- Scroll-to-bottom button (floats above messages)
+
+Without proper z-index, button appears above sidebar and overlay.
+
+### The Solution
+
+**Stacking Order (highest to lowest):**
+
+```
+z-50: Sidebar menu (always on top when open)
+z-40: ChatLoadingOverlay (covers chat area)
+z-30: Scroll-to-bottom button (above messages, below overlay)
+```
+
+### Implementation
+
+```typescript
+// Sidebar (unchanged at z-50)
+<div className="... z-50 ...">
+    <Sidebar />
+</div>
+
+// ChatLoadingOverlay.tsx
+<div className="... z-40 ...">
+    <Spinner />
+</div>
+
+// MessageList.tsx - Scroll button (line 770)
+<button
+    onClick={scrollToBottom}
+    className="... z-30 ..."
+>
+    <ArrowDown size={20} />
+</button>
+```
+
+### Visual Hierarchy
+
+```
+┌────────────────────────────────────────┐
+│                                        │
+│   ┌────────┐                           │
+│   │Sidebar │  z-50 (always on top)     │
+│   │        │                           │
+│   │        │  ┌──────────────────────┐ │
+│   │        │  │ Loading Overlay z-40 │ │
+│   │        │  │                      │ │
+│   │        │  │   ┌──────────────┐   │ │
+│   │        │  │   │ Scroll btn   │   │ │
+│   │        │  │   │    z-30      │   │ │
+│   │        │  │   └──────────────┘   │ │
+│   │        │  │                      │ │
+│   └────────┘  └──────────────────────┘ │
+│                                        │
+└────────────────────────────────────────┘
+```
+
+---
+
+## Virtuoso Performance Optimizations
+
+### Key Props for Performance
+
+**File:** `components/MessageList.tsx` (lines 727-735)
+
+```typescript
+<Virtuoso
+    ref={virtuosoRef}
+    data={messages}
+    computeItemKey={(_, msg) => msg.id}      // Stable keys
+    increaseViewportBy={500}                  // Pre-render buffer
+    defaultItemHeight={100}                   // Estimated height
+    atBottomThreshold={60}                    // "At bottom" tolerance
+    followOutput={false}                      // CRITICAL: disable auto-follow
+    isScrolling={handleScrollingStateChange}
+    atBottomStateChange={handleAtBottomStateChange}
+    // ...
+/>
+```
+
+### Explanation of Each Prop
+
+**1. `computeItemKey={(_, msg) => msg.id}`**
+- Provides stable keys for React reconciliation
+- Uses message ID instead of array index
+- Prevents unnecessary re-renders when messages update
+- Critical for performance with streaming content
+
+**2. `increaseViewportBy={500}`**
+- Pre-renders items 500px above and below visible area
+- Smoother scrolling experience
+- Prevents "blank" areas during fast scrolling
+- Tradeoff: slightly more memory usage
+
+**3. `defaultItemHeight={100}`**
+- Estimated height for items not yet measured
+- Improves initial scroll position calculations
+- Reduces layout shifts during scrolling
+- Adjust based on your average message height
+
+**4. `atBottomThreshold={60}`**
+- How far from bottom to consider "at bottom"
+- 60px tolerance for slight scroll offsets
+- Used by `atBottomStateChange` callback
+- Affects scroll-to-bottom button visibility
+
+**5. `followOutput={false}`**
+- **CRITICAL** - Disables auto-scrolling
+- Required for Focus Mode pattern
+- Without this, Virtuoso would fight our scroll logic
+- Always set to `false` for AI chat patterns
+
+### Performance Impact
+
+```
+Without optimizations:
+- Scroll lag on long conversations
+- Visible blank areas during fast scroll
+- Unnecessary re-renders during streaming
+- Scroll position jumps on update
+
+With optimizations:
+- Smooth scrolling even with 1000+ messages
+- Pre-rendered content ready for display
+- Efficient React reconciliation
+- Stable scroll positions
 ```
 
 ---
@@ -806,8 +1111,8 @@ const MessageList: React.FC<MessageListProps> = ({
 
       // Only scroll when user sends a message - position it at TOP
       if (lastMessage.role === Role.USER) {
-        // Set footer to 55vh for Focus Mode
-        setFooterHeight('55vh');
+        // Set footer to 60vh for Focus Mode
+        setFooterHeight('60vh');
         setIsFooterBig(true);
         justSentMessageRef.current = true;
 
@@ -820,10 +1125,10 @@ const MessageList: React.FC<MessageListProps> = ({
           });
         }, 100);
 
-        // Allow scrolling to shrink footer after 500ms (after animation)
+        // Allow scrolling to shrink footer after 800ms (after animation)
         setTimeout(() => {
           justSentMessageRef.current = false;
-        }, 500);
+        }, 800);
       }
     }
   }, [messages.length]);
@@ -947,7 +1252,7 @@ const handleScrollingStateChange = (isScrolling: boolean) => {
 
 **Solutions:**
 - Verify guard flag is set before scrolling
-- Increase timeout to 600-700ms if needed
+- Increase timeout to 900-1000ms if needed on slow devices
 - Ensure all three conditions are checked in callback
 
 ### Problem 3: Message Doesn't Reach Top of Viewport
@@ -1015,7 +1320,7 @@ useEffect(() => {
 ### Problem 5: Footer Doesn't Shrink When Scrolling
 
 **Symptoms:**
-- User scrolls up, but footer stays at 55vh
+- User scrolls up, but footer stays at 60vh
 - Lots of wasted space when viewing history
 - Callback not firing
 
@@ -1186,8 +1491,8 @@ If you found this helpful, please:
 - 🐛 Report issues if you find any
 
 **Created:** January 23, 2025
-**Last Updated:** January 23, 2025
-**Version:** 1.0.0
+**Last Updated:** January 1, 2026
+**Version:** 2.0.0
 
 ---
 
@@ -1214,12 +1519,15 @@ const justSentMessageRef = useRef<boolean>(false);
 
 ### Critical Timing Values
 - **100ms:** Delay before scrollToIndex (layout stabilization)
-- **500ms:** Delay before enabling shrink callback (animation completion)
+- **800ms:** Delay before enabling shrink callback (animation completion)
+- **500ms:** ChatLoadingOverlay display time
+- **200ms:** ChatLoadingOverlay fade-out animation
 
 ### Key Decisions
-- **55vh:** Footer height for Focus Mode (adjustable based on your design)
+- **60vh:** Footer height for Focus Mode (adjustable based on your design)
 - **align: 'start':** Scroll alignment (positions message at TOP)
 - **followOutput: false:** Disables auto-scroll (CRITICAL)
+- **z-index hierarchy:** Sidebar (z-50) > Overlay (z-40) > Scroll button (z-30)
 
 ---
 

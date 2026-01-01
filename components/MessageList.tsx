@@ -24,6 +24,7 @@ interface MessageListProps {
   minFooterHeight: number;
   user?: UserProfile | null;
   language: string;
+  sessionId?: string | null;
 }
 
 // --- Helper Functions ---
@@ -512,7 +513,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
 };
 
 // --- Main MessageList Component ---
-const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, currentMode, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, currentMode, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language, sessionId }) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
@@ -522,6 +523,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
     const [footerHeight, setFooterHeight] = useState<string>(`${minFooterHeight}px`);
     const [isFooterBig, setIsFooterBig] = useState<boolean>(false);
     const justSentMessageRef = useRef<boolean>(false);
+    const prevSessionIdRef = useRef<string | null>(null);
+    const needsScrollRef = useRef<boolean>(false);
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
     const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
     const [speechRate, setSpeechRate] = useState(1);
@@ -556,6 +559,31 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
             setFooterHeight(`${minFooterHeight}px`);
         }
     }, [minFooterHeight, isFooterBig]);
+
+    // Step 1: Detect session change, mark that we need scroll
+    useEffect(() => {
+        if (sessionId && prevSessionIdRef.current !== sessionId) {
+            prevSessionIdRef.current = sessionId;
+            needsScrollRef.current = true;
+        }
+    }, [sessionId]);
+
+    // Step 2: When messages loaded and we need scroll, do it
+    useEffect(() => {
+        if (needsScrollRef.current && messages.length > 0) {
+            needsScrollRef.current = false;
+
+            const timer = setTimeout(() => {
+                virtuosoRef.current?.scrollToIndex({
+                    index: messages.length - 1,
+                    align: 'start',
+                    behavior: 'auto'
+                });
+            }, 100);
+
+            return () => clearTimeout(timer);
+        }
+    }, [messages.length]);
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -699,6 +727,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
             <Virtuoso
                 ref={virtuosoRef}
                 data={messages}
+                computeItemKey={(_, msg) => msg.id}
+                increaseViewportBy={500}
+                defaultItemHeight={100}
                 className="flex-1 w-full scrollbar-hide"
                 atBottomThreshold={60}
                 followOutput={false}
@@ -736,7 +767,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
                 components={{ Footer: () => <div style={{ height: footerHeight }} /> }}
             />
             {showScrollToBottom && (
-                <button onClick={scrollToBottom} className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 p-2 bg-white dark:bg-[#1a1b1e] text-gray-600 dark:text-gray-200 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all" title="Scroll to bottom"><ArrowDown size={20} /></button>
+                <button onClick={scrollToBottom} className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 p-2 bg-white dark:bg-[#1a1b1e] text-gray-600 dark:text-gray-200 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all" title="Scroll to bottom"><ArrowDown size={20} /></button>
             )}
         </div>
     );

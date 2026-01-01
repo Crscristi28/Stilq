@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { ChatMessage, Role, Attachment, ModelId, MODELS, ChatSession, PromptSettings, AppSettings, Source } from './types';
 import MessageList from './components/MessageList';
 import InputArea from './components/InputArea';
+import ChatLoadingOverlay from './components/ChatLoadingOverlay';
 import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
 import { streamChatResponse } from './services/geminiService';
@@ -727,6 +728,7 @@ const App: React.FC = () => {
           </div>
           {/* Chat Area */}
           <div className="flex-1 overflow-hidden relative flex flex-col bg-white dark:bg-[#0e0e10]">
+            <ChatLoadingOverlay sessionId={currentSessionId} />
             <MessageList
               messages={displayMessages}
               isThinking={isLoading}
@@ -739,6 +741,7 @@ const App: React.FC = () => {
               minFooterHeight={minFooterHeight}
               user={userWithPreferredName}
               language={resolveLanguage(appSettings.language)}
+              sessionId={currentSessionId}
             />
             <div ref={inputAreaRef}>
               <InputArea
