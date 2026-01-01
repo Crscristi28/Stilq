@@ -44,12 +44,6 @@ const buildImageMap = (msg: ChatMessage): Record<string, string> => {
 
 // Main print function
 export const printMessage = (msg: ChatMessage): void => {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert('Please allow popups to print.');
-    return;
-  }
-
   const galleryImages = getGalleryImages(msg);
   const timestamp = new Date(msg.timestamp).toLocaleString();
   const imageMap = buildImageMap(msg);
@@ -183,10 +177,14 @@ export const printMessage = (msg: ChatMessage): void => {
       border-top: 1px solid #e5e7eb;
       margin: 24px 0;
     }
-    .close-btn {
+    .header-buttons {
       position: fixed;
       top: 20px;
       right: 20px;
+      display: flex;
+      gap: 8px;
+    }
+    .header-btn {
       padding: 10px 20px;
       background: #3b82f6;
       color: white;
@@ -196,7 +194,7 @@ export const printMessage = (msg: ChatMessage): void => {
       font-size: 14px;
       font-weight: 500;
     }
-    .close-btn:hover { background: #2563eb; }
+    .header-btn:hover { background: #2563eb; }
     @media print {
       @page {
         margin: 0;
@@ -210,7 +208,7 @@ export const printMessage = (msg: ChatMessage): void => {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .close-btn { display: none; }
+      .header-buttons { display: none; }
       .meta { display: none; }
       .content pre {
         page-break-inside: avoid;
@@ -223,7 +221,10 @@ export const printMessage = (msg: ChatMessage): void => {
   </style>
 </head>
 <body>
-  <button class="close-btn" onclick="window.close()">Close</button>
+  <div class="header-buttons">
+    <button class="header-btn" onclick="window.print()">Print</button>
+    <button class="header-btn" onclick="window.close()">Close</button>
+  </div>
   <div class="meta">${timestamp}</div>
   <div class="content" id="content"></div>
 
@@ -289,42 +290,9 @@ export const printMessage = (msg: ChatMessage): void => {
     function init() {
       if (typeof marked !== 'undefined') {
         renderContent();
-        waitForImagesAndPrint();
       } else {
         setTimeout(init, 50);
       }
-    }
-
-    function waitForImagesAndPrint() {
-      const images = document.querySelectorAll('img');
-      let loaded = 0;
-      const total = images.length;
-
-      if (total === 0) {
-        setTimeout(() => { window.focus(); window.print(); }, 100);
-        return;
-      }
-
-      images.forEach(img => {
-        if (img.complete) {
-          loaded++;
-        } else {
-          img.onload = img.onerror = () => {
-            loaded++;
-            if (loaded === total) {
-              window.focus();
-              window.print();
-            }
-          };
-        }
-      });
-
-      if (loaded === total) {
-        setTimeout(() => { window.focus(); window.print(); }, 100);
-      }
-
-      // Fallback: print after 3 seconds
-      setTimeout(() => { window.focus(); window.print(); }, 3000);
     }
 
     init();
@@ -332,6 +300,11 @@ export const printMessage = (msg: ChatMessage): void => {
 </body>
 </html>`;
 
-  printWindow.document.write(html);
-  printWindow.document.close();
+  const blob = new Blob([html], { type: 'text/html' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  const newWindow = window.open(blobUrl, '_blank');
+  if (newWindow) {
+    newWindow.addEventListener('pagehide', () => URL.revokeObjectURL(blobUrl));
+  }
 };

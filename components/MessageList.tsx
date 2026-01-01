@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { translations, Language } from '../translations';
 import { printMessage } from '../utils/printMessage';
+import { previewDocument } from '../utils/previewDocument';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -152,7 +153,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                             />
                                         </div>
                                     ) : (
-                                        <div className="h-16 w-48 flex items-center gap-3 p-3 bg-white dark:bg-[#1a1b1e] border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+                                        <div
+                                            onClick={() => previewDocument(att)}
+                                            className={`h-16 w-48 flex items-center gap-3 p-3 bg-white dark:bg-[#1a1b1e] border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm ${att.mimeType === 'application/pdf' ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-[#252629] transition-colors' : ''}`}
+                                        >
                                             <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-500 dark:text-gray-400">
                                                 {React.createElement(getFileIcon(att.mimeType), { size: 20 })}
                                             </div>
