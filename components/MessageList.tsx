@@ -690,7 +690,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
     };
 
     const scrollToBottom = () => {
-        virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'start', behavior: 'smooth' });
+        virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, align: 'start', behavior: 'auto' });
     };
 
     // Handle scrolling state change - shrink footer when user scrolls
@@ -728,8 +728,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
                 ref={virtuosoRef}
                 data={messages}
                 computeItemKey={(_, msg) => msg.id}
-                increaseViewportBy={500}
-                defaultItemHeight={100}
+                increaseViewportBy={800}
                 className="flex-1 w-full scrollbar-hide"
                 atBottomThreshold={60}
                 followOutput={false}
