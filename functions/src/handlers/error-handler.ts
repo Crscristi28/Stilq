@@ -8,6 +8,7 @@
 
 import { GoogleGenAI, Content, ThinkingLevel } from "@google/genai";
 import { Response } from "express";
+import { detectAspectRatio } from "../utils/image";
 
 interface StreamResult {
     text: string;
@@ -62,9 +63,10 @@ export async function streamWithRetry(
 
                         // Inline images (matplotlib graphs)
                         if ((part as any).inlineData) {
-                            console.log(`[GRAPH] Received inline image: ${(part as any).inlineData.mimeType}`);
                             const inlineData = (part as any).inlineData;
-                            res.write(`data: ${JSON.stringify({ graph: { mimeType: inlineData.mimeType || 'image/png', data: inlineData.data } })}\n\n`);
+                            const aspectRatio = detectAspectRatio(inlineData.data);
+                            console.log(`[GRAPH] Received inline image: ${inlineData.mimeType} (${aspectRatio})`);
+                            res.write(`data: ${JSON.stringify({ graph: { mimeType: inlineData.mimeType || 'image/png', data: inlineData.data, aspectRatio } })}\n\n`);
                             if ((res as any).flush) (res as any).flush();
                         }
 

@@ -501,13 +501,14 @@ const App: React.FC = () => {
         // Returns index immediately, upload runs in background (non-blocking)
         async (graphData) => {
             const graphIndex = streamAttachmentsRef.current.length;
+            const graphAspectRatio = graphData.aspectRatio || '4:3'; // matplotlib default
 
             if (user?.uid && sessionId) {
                 const placeholder: Attachment = {
                     mimeType: graphData.mimeType,
                     isPlaceholder: true,
                     isGraph: true,
-                    aspectRatio: '1:1'
+                    aspectRatio: graphAspectRatio
                 };
                 streamAttachmentsRef.current = [...streamAttachmentsRef.current, placeholder];
 
@@ -516,7 +517,7 @@ const App: React.FC = () => {
                     .then(attachment => {
                         streamAttachmentsRef.current = streamAttachmentsRef.current.map(att =>
                             att === placeholder
-                                ? { ...attachment, isGraph: true, aspectRatio: '1:1' }
+                                ? { ...attachment, isGraph: true, aspectRatio: graphAspectRatio }
                                 : att
                         );
                     })

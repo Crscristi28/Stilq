@@ -4,7 +4,6 @@ import { auth } from "../firebase";
 // Cloud Function URLs
 const BASE_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net';
 const STREAM_CHAT_URL = `${BASE_URL}/streamChat`;
-const SUGGESTIONS_URL = `${BASE_URL}/generateSuggestions`;
 
 /**
  * Streams a chat response from Gemini via Cloud Function (secure).
@@ -23,7 +22,7 @@ export const streamChatResponse = async (
   onThinking?: (text: string) => void,
   onSuggestions?: (suggestions: string[]) => void,
   onImage?: (image: { mimeType: string; data: string; aspectRatio?: string; storageUrl?: string; fileUri?: string }) => Promise<number>,
-  onGraph?: (graph: { mimeType: string; data: string }) => Promise<number>,
+  onGraph?: (graph: { mimeType: string; data: string; aspectRatio?: string }) => Promise<number>,
   onRoutedModel?: (model: string) => void,
   onGeneratingImage?: () => void
 ): Promise<string> => {

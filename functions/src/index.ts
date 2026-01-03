@@ -121,12 +121,12 @@ async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, hi
             return { targetModel: modelMatch[0], reasoning };
         }
 
-        // Default to Flash if no model found
-        console.log(`[ROUTER] No model found, defaulting to Flash`);
-        return { targetModel: "gemini-3-flash-preview", reasoning: "Default fallback" };
+        // Default to Pro if no model found
+        console.log(`[ROUTER] No model found, defaulting to Pro`);
+        return { targetModel: "gemini-3-pro-preview", reasoning: "Default fallback" };
     } catch (e) {
-        console.error("[ROUTER] Error, defaulting to Flash:", e);
-        return { targetModel: "gemini-3-flash-preview", reasoning: "Router error fallback" };
+        console.error("[ROUTER] Error, defaulting to Pro:", e);
+        return { targetModel: "gemini-3-pro-preview", reasoning: "Router error fallback" };
     }
 }
 
@@ -511,106 +511,20 @@ export const streamChat = onRequest(
         // All chat models use API Key
         const chatAI = getAI();
 
-        const result = await chatAI.models.generateContentStream({
-          model: selectedModelId || "gemini-3-flash-preview",
+        // Use modular streaming handler
+        const streamResult = await streamWithRetry(
+          chatAI,
+          selectedModelId || "gemini-3-flash-preview",
           contents,
-          config: modelConfig,
-        });
+          modelConfig,
+          res
+        );
+        fullResponseText = streamResult.text;
 
-        let sentMetadata = false;
-
-        for await (const chunk of result) {
-          // DEBUG: Log raw chunk structure to see tool usage
-          const candidates = (chunk as any).candidates;
-          if (candidates && candidates.length > 0) {
-             const parts = candidates[0].content?.parts;
-             if (parts) {
-                 for (const part of parts) {
-                    // Log executable code (when model calls code execution)
-                    if ((part as any).executableCode) {
-                        console.log(`[CODE] Executing: ${(part as any).executableCode.code?.substring(0, 100)}...`);
-                    }
-
-                    // Code execution result
-                    if ((part as any).codeExecutionResult) {
-                        const result = (part as any).codeExecutionResult;
-                        console.log(`[CODE] Result outcome: ${result.outcome}, output length: ${result.output?.length || 0}`);
-
-                        const output = result.output || '';
-                        const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
-                        const imageMatch = output.match(base64ImageRegex);
-                        if (imageMatch) {
-                            const mimeType = `image/${imageMatch[1]}`;
-                            const base64Data = imageMatch[2];
-                            res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
-                            if ((res as any).flush) (res as any).flush();
-                        }
-                    }
-
-                    // Inline images from code execution (matplotlib graphs)
-                    if ((part as any).inlineData) {
-                        console.log(`[GRAPH] Received inline image: ${(part as any).inlineData.mimeType}`);
-                        const inlineData = (part as any).inlineData;
-                        const mimeType = inlineData.mimeType || 'image/png';
-                        const base64Data = inlineData.data;
-                        // Send as GRAPH event (separate from generated images)
-                        res.write(`data: ${JSON.stringify({
-                            graph: { mimeType, data: base64Data }
-                        })}\n\n`);
-                        if ((res as any).flush) (res as any).flush();
-                    }
-
-                     // Check if this part is a thought
-                     const isThought = (part as any).thought === true;
-
-                     if (isThought && part.text) {
-                         res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
-                         if ((res as any).flush) (res as any).flush();
-                     } else if (part.text) {
-                         fullResponseText += part.text; // Accumulate for suggestions
-                         res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
-                         if ((res as any).flush) (res as any).flush();
-                     }
-                 }
-             }
-          } else {
-              // Fallback for simple text chunks
-              const text = chunk.text;
-              if (text) {
-                fullResponseText += text;
-                res.write(`data: ${JSON.stringify({ text })}\n\n`);
-                if ((res as any).flush) (res as any).flush();
-              }
-          }
-
-          // Extract Grounding Metadata (Sources)
-          let metadata = (chunk as any).groundingMetadata;
-          if (!metadata) {
-             metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
-          }
-
-          if (metadata && !sentMetadata) {
-            if (metadata.groundingChunks) {
-               const sources = metadata.groundingChunks
-                 .map((c: { web?: { title?: string; uri: string } }) => {
-                    if (c.web) {
-                        return { title: c.web.title || "Web Source", url: c.web.uri };
-                    }
-                    return null;
-                 })
-                 .filter((s: { title: string; url: string } | null): s is { title: string; url: string } => s !== null);
-
-               if (sources.length > 0) {
-                 res.write(`data: ${JSON.stringify({ sources })}\n\n`);
-                 if ((res as any).flush) (res as any).flush();
-                 sentMetadata = true; 
-               }
-            }
-          }
-
-          // Force flush
-          if ((res as any).flush) (res as any).flush();
-          if ((res.socket as any)?.uncork) (res.socket as any).uncork();
+        // Retry with Pro if Flash returned empty response
+        if (isFlash && fullResponseText.trim().length === 0) {
+          const retryResult = await retryWithPro(chatAI, contents, systemInstruction || "", res);
+          fullResponseText = retryResult.text;
         }
 
         // --- SUGGESTION GENERATION (Server-Side Pipeline) ---

@@ -21,6 +21,7 @@ interface CodeBlockProps {
 const CodeBlock = ({ language, children, ...props }: CodeBlockProps) => {
   const [copied, setCopied] = useState(false);
   const isDark = document.documentElement.classList.contains('dark');
+  const bgColor = isDark ? '#2f2f2f' : '#f4f4f4';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(String(children));
@@ -28,27 +29,51 @@ const CodeBlock = ({ language, children, ...props }: CodeBlockProps) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // ChatGPT style - unified background, no separators
+  const customTheme: { [key: string]: React.CSSProperties } = {
+    'code[class*="language-"]': {
+      background: 'none',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      fontSize: '0.875rem',
+      lineHeight: '1.6',
+    },
+    'pre[class*="language-"]': {
+      background: 'none',
+      margin: 0,
+      padding: '0 1rem 1rem 1rem',
+      overflow: 'visible',
+    },
+  };
+
+  // Merge base theme with transparent background override
+  const baseTheme = isDark ? vscDarkPlus : vs;
+  const mergedTheme = { ...baseTheme, ...customTheme };
+
   return (
-    <div className={`relative group rounded-lg overflow-hidden my-4 border border-gray-200 dark:border-gray-700/50 shadow-sm ${isDark ? 'bg-[#1e1e1e]' : 'bg-gray-100'}`}>
-      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 dark:bg-[#2d2e33] border-b border-gray-200 dark:border-gray-700/50">
-        <span className="text-xs text-gray-600 dark:text-gray-400 font-mono font-medium">{language || 'text'}</span>
-        <button 
-          onClick={handleCopy} 
-          className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors bg-transparent p-1 rounded hover:bg-gray-200 dark:hover:bg-white/10"
-          title="Copy code"
+    <div className="my-3 rounded-xl overflow-hidden" style={{ backgroundColor: bgColor }}>
+      <div className="flex items-center justify-between px-4 py-2.5 text-xs" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+        <span className="font-medium">{language || 'code'}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
         >
-           {copied ? <Check size={14} className="text-green-500 dark:text-green-400"/> : <Copy size={14}/>}
-           <span className="text-xs font-medium">{copied ? 'Copied!' : 'Copy'}</span>
+           {copied ? <Check size={14} className="text-green-500"/> : <Copy size={14}/>}
+           <span>{copied ? 'Copied!' : 'Copy'}</span>
         </button>
       </div>
       <div className="overflow-x-auto">
         <SyntaxHighlighter
             {...props}
-            style={isDark ? vscDarkPlus : vs}
+            style={mergedTheme}
             language={language}
             PreTag="div"
-            customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '0.875rem', lineHeight: '1.5' }}
-            codeTagProps={{ style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' } }}
+            customStyle={{
+              margin: 0,
+              padding: '0 1rem 1rem 1rem',
+              background: 'none',
+              fontSize: '0.875rem',
+              lineHeight: '1.6'
+            }}
         >
             {String(children).replace(/\n$/, '')}
         </SyntaxHighlighter>
