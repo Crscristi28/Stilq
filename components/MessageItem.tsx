@@ -260,7 +260,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
         <div className="pl-0 md:pl-9 w-full">
             {msg.isStreaming && (!msg.text || msg.text.length === 0) ? (
                 <Indicators type={
-                    selectedModel === 'image-agent' ? 'image'
+                    selectedModel === 'gemini-3-pro-image-preview' ? 'image'
                     : currentMode === 'research' ? 'research'
                     : 'default'
                 } />

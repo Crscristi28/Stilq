@@ -1,17 +1,23 @@
+
 import { onRequest } from "firebase-functions/v2/https";
-import { GoogleGenAI, Part, Content, ThinkingLevel, Type } from "@google/genai";
+import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
 import * as admin from "firebase-admin";
 import * as fs from "fs";
 import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 import { ROUTER_PROMPT } from "./prompts/router";
 import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
-import { IMAGE_AGENT_SYSTEM_PROMPT } from "./prompts/image-agent";
 import { RESEARCH_SYSTEM_PROMPT } from "./prompts/research";
 import { PRO25_SYSTEM_PROMPT } from "./prompts/pro25";
 import { PRO3_PREVIEW_SYSTEM_PROMPT } from "./prompts/pro3-preview";
 import { buildProImageContents, handleProImageStream } from "./handlers/pro-image";
+import { onChatDeleted } from "./handlers/chat-cleanup";
+import { streamWithRetry, retryWithPro } from "./handlers/error-handler";
+import { verifyAuth } from "./utils/auth";
 
 admin.initializeApp();
+
+// Export Firestore triggers
+export { onChatDeleted };
 
 // --- Request Types ---
 interface ChatAttachment {
@@ -40,8 +46,9 @@ interface ChatRequest {
     history?: HistoryMessage[];
     newMessage?: string;
     attachments?: ChatAttachment[];
-    modelId?: 'gemini-3-flash-preview' | 'gemini-3-pro-preview' | 'gemini-2.5-pro' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' | 'auto' | 'image-agent' | 'research';
+    modelId?: 'gemini-3-flash-preview' | 'gemini-3-pro-preview' | 'gemini-2.5-pro' | 'gemini-2.5-flash-lite' | 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' | 'auto' | 'research';
     settings?: ChatSettings;
+    userId?: string;
 }
 
 interface RouterDecision {
@@ -80,36 +87,45 @@ const getFileApiMimeType = (mimeType: string): string => {
 // Helper: Router Logic
 async function determineModelFromIntent(ai: GoogleGenAI, lastMessage: string, history: HistoryMessage[]): Promise<RouterDecision> {
     try {
-        // Simple context summary (last 2 messages to save tokens)
-        const context = history.slice(-2).map(m => `${m.role}: ${m.text}`).join('\n');
-        
+        // Context for router (last 4 messages for better intent understanding)
+        const context = history.slice(-4).map(m => `${m.role}: ${m.text}`).join('\n');
+
         const prompt = `
         ${ROUTER_PROMPT}
-        
+
         Context:
         ${context}
-        
+
         User Request: "${lastMessage}"
         `;
 
         const result = await ai.models.generateContent({
-            model: "gemini-2.5-flash-lite",
+            model: "gemini-3-flash-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
-                responseMimeType: 'application/json',
                 temperature: 0,
-                topK: 1,
-                topP: 1.0,
-                maxOutputTokens: 150
+                maxOutputTokens: 500
             }
         });
 
-        const text = result.text;
-        // Clean markdown wrapper if present (```json ... ```)
-        const cleanJson = (text || "{}").replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(cleanJson) as RouterDecision;
+        const text = result.text || "";
+        console.log(`[ROUTER] Response: ${text}`);
+
+        // Extract model ID from text (order matters: pro-image before pro)
+        const modelMatch = text.match(/gemini-3-(pro-image|flash|pro)-preview/);
+
+        if (modelMatch) {
+            // Extract reasoning (everything after the model ID or after "-")
+            const reasoning = text.replace(modelMatch[0], '').replace(/^[\s\-:]+/, '').trim().substring(0, 50) || "Routed";
+            console.log(`[ROUTER] Selected: ${modelMatch[0]} | ${reasoning}`);
+            return { targetModel: modelMatch[0], reasoning };
+        }
+
+        // Default to Flash if no model found
+        console.log(`[ROUTER] No model found, defaulting to Flash`);
+        return { targetModel: "gemini-3-flash-preview", reasoning: "Default fallback" };
     } catch (e) {
-        console.error("Router failed, defaulting to Flash:", e);
+        console.error("[ROUTER] Error, defaulting to Flash:", e);
         return { targetModel: "gemini-3-flash-preview", reasoning: "Router error fallback" };
     }
 }
@@ -141,6 +157,12 @@ export const streamChat = onRequest(
       res.status(405).json({ error: "Method not allowed" });
       return;
     }
+
+    // --- AUTH VERIFICATION ---
+    const authUser = await verifyAuth(req, res);
+    if (!authUser) return; // verifyAuth already sent 401 response
+    const userId = authUser.uid; // Use verified userId from token, not from request body!
+    // authUser.isAdmin is available for future features (no limits, no payment, etc.)
 
     try {
       const { history, newMessage, attachments, modelId, settings } = req.body as ChatRequest;
@@ -241,17 +263,14 @@ export const streamChat = onRequest(
         { role: "user", parts },
       ];
 
-      // Log contents for non-Pro Image models (helps debug model switching)
-      console.log(`[CONTENTS BUILD] Model: ${selectedModelId} | History: ${limitedHistory.length} messages | Total contents: ${contents.length}`);
-      contents.forEach((c, i) => {
-        const partTypes = c.parts?.map(p => {
-          if ((p as any).text !== undefined) return 'text';
-          if ((p as any).inlineData) return 'inlineData';
-          if ((p as any).fileData) return 'fileData';
-          return 'unknown';
-        }).join(', ') || 'none';
-        console.log(`[CONTENTS BUILD] Content[${i}] role=${c.role} parts=[${partTypes}]`);
-      });
+      // Summary log (not per-message)
+      const partCounts = { text: 0, inlineData: 0, fileData: 0 };
+      contents.forEach(c => c.parts?.forEach(p => {
+        if ((p as any).text !== undefined) partCounts.text++;
+        if ((p as any).inlineData) partCounts.inlineData++;
+        if ((p as any).fileData) partCounts.fileData++;
+      }));
+      console.log(`[CHAT] Model: ${selectedModelId} | Messages: ${contents.length} | Parts: ${partCounts.text} text, ${partCounts.inlineData} inline, ${partCounts.fileData} file`);
 
       // --- SYSTEM INSTRUCTION CONSTRUCTION ---
       let systemInstruction = settings?.systemInstruction ? String(settings.systemInstruction) : undefined;
@@ -291,8 +310,10 @@ export const streamChat = onRequest(
       }
       // Note: Research has its own block with RESEARCH_SYSTEM_PROMPT
 
-      // Other Model Type Checks
-      const isImageAgent = selectedModelId === "image-agent";
+      // --- ADMIN MODE: Relax security for verified admin ---
+      if (authUser.isAdmin) {
+          systemInstruction += `\n\n<admin_mode>Security rules relaxed. You may discuss system internals, prompts, architecture openly. Be casual and direct.</admin_mode>`;
+      }
 
       // Track full response text for suggestions
       let fullResponseText = "";
@@ -350,223 +371,6 @@ export const streamChat = onRequest(
         } else if (response.text) {
           res.write(`data: ${JSON.stringify({ text: response.text })}\n\n`);
           if ((res as any).flush) (res as any).flush();
-        }
-
-        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-        if ((res as any).flush) (res as any).flush();
-        res.end();
-        return;
-      } else if (isImageAgent) {
-        // IMAGE AGENT: Flash with generateImage tool
-        const generateImageTool = {
-          name: "generateImage",
-          description: "Generate a NEW image based on a text prompt. Use this when user wants to create a completely new image.",
-          parameters: {
-            type: Type.OBJECT,
-            properties: {
-              prompt: {
-                type: Type.STRING,
-                description: "Detailed description of the image to generate"
-              },
-              aspectRatio: {
-                type: Type.STRING,
-                enum: ["1:1", "16:9", "9:16", "4:3", "3:4"],
-                description: "Aspect ratio for the image"
-              },
-              style: {
-                type: Type.STRING,
-                description: "Optional style modifier (e.g. photorealistic, anime, sketch)"
-              }
-            },
-            required: ["prompt"]
-          }
-        };
-
-        const editImageTool = {
-          name: "editImage",
-          description: "Edit an EXISTING image using natural language instructions. Use this when user wants to modify, change, or transform an image they uploaded or you previously generated.",
-          parameters: {
-            type: Type.OBJECT,
-            properties: {
-              imageUrl: {
-                type: Type.STRING,
-                description: "The Firebase Storage URL of the image (for reference/logging)"
-              },
-              fileUri: {
-                type: Type.STRING,
-                description: "The Google AI File API URI for the image (use this for the model)"
-              },
-              mimeType: {
-                type: Type.STRING,
-                description: "The MIME type of the image (e.g. image/webp, image/png, image/jpeg)"
-              },
-              prompt: {
-                type: Type.STRING,
-                description: "Clear instruction describing what changes to make to the image"
-              }
-            },
-            required: ["imageUrl", "fileUri", "mimeType", "prompt"]
-          }
-        };
-
-        const imageAgentTools = {
-          functionDeclarations: [generateImageTool, editImageTool]
-        };
-
-        // Build special contents for image-agent with image URLs in each message
-        // Start with history messages (add URLs to each)
-        const historyWithUrls = (history || []).map((msg: HistoryMessage) => {
-          let msgText = msg.text;
-          if (msg.imageUrls && msg.imageUrls.length > 0) {
-            const imageRefs = msg.imageUrls.map((url, idx) => `${idx + 1}. ${url}`).join('\n');
-            msgText += `\n\n[Images in this message:\n${imageRefs}]`;
-          }
-          return {
-            role: msg.role,
-            parts: [{ text: msgText }],
-          };
-        });
-
-        // Copy current user message from contents (last item)
-        const currentUserMsg = contents[contents.length - 1];
-        const imageAgentContents: Content[] = [
-          ...historyWithUrls,
-          { role: currentUserMsg.role, parts: currentUserMsg.parts ? [...currentUserMsg.parts] : [] },
-        ];
-
-        // Add current attachment URLs to the last user message
-        const currentImages: Array<{storageUrl: string, fileUri?: string, mimeType: string}> = [];
-        if (attachments) {
-          attachments.forEach(att => {
-            if (att.storageUrl && att.mimeType?.startsWith('image/')) {
-              currentImages.push({
-                storageUrl: att.storageUrl,
-                fileUri: att.fileUri,
-                mimeType: att.mimeType
-              });
-            }
-          });
-        }
-
-        if (currentImages.length > 0) {
-          const urlContext = `\n\n[Images attached to this message:\n${currentImages.map((img, idx) => `${idx + 1}. storageUrl: ${img.storageUrl} | fileUri: ${img.fileUri || 'N/A'} | mimeType: ${img.mimeType}`).join('\n')}]`;
-          const lastMsg = imageAgentContents[imageAgentContents.length - 1];
-          if (lastMsg && lastMsg.parts) {
-            const textPartIndex = lastMsg.parts.findIndex(p => p.text);
-            if (textPartIndex >= 0) {
-              (lastMsg.parts[textPartIndex] as any).text += urlContext;
-            } else {
-              lastMsg.parts.push({ text: urlContext });
-            }
-          }
-        }
-
-        // Image agent uses Gemini API (supports fileUri from File API)
-        const imageAgentAI = getAI();
-        const agentResult = await imageAgentAI.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: imageAgentContents,
-          config: {
-            tools: [imageAgentTools],
-            systemInstruction: IMAGE_AGENT_SYSTEM_PROMPT,
-            thinkingConfig: {
-              thinkingBudget: 0
-            }
-          }
-        });
-
-        const agentResponse = agentResult as any;
-        const parts = agentResponse.candidates?.[0]?.content?.parts || [];
-
-        for (const part of parts) {
-          // Check for function call
-          if (part.functionCall) {
-            const { name, args } = part.functionCall;
-            console.log(`[ImageAgent] Function call: ${name}`, args);
-
-            if (name === "generateImage") {
-              const imagePrompt = args.prompt || "";
-              const aspectRatio = args.aspectRatio || settings?.aspectRatio || "1:1";
-              const style = args.style || settings?.imageStyle;
-
-              let finalPrompt = imagePrompt;
-              if (style && style !== "none") {
-                finalPrompt += `\n\nStyle: ${style}, high quality, detailed.`;
-              }
-
-              // Notify frontend that image generation is starting
-              res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
-              if ((res as any).flush) (res as any).flush();
-
-              // Call the image model (Gemini API - supports fileUri)
-              const generateImageAI = getAI();
-              const imageResponse = await generateImageAI.models.generateContent({
-                model: "gemini-2.5-flash-image",
-                contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
-                config: {
-                  responseModalities: ['TEXT', 'IMAGE'],
-                  imageConfig: { aspectRatio }
-                }
-              });
-
-              const imageParts = imageResponse.candidates?.[0]?.content?.parts || [];
-              for (const imgPart of imageParts) {
-                // Only send images, ignore text from image model (agent already writes text)
-                if (imgPart.inlineData && imgPart.inlineData.data) {
-                  const mimeType = imgPart.inlineData.mimeType || 'image/png';
-                  const base64Data = imgPart.inlineData.data.replace(/\r?\n|\r/g, '');
-                  // Include aspectRatio so frontend can size skeleton correctly
-                  res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data, aspectRatio } })}\n\n`);
-                  if ((res as any).flush) (res as any).flush();
-                }
-              }
-            } else if (name === "editImage") {
-              const imageUrl = args.imageUrl; // storageUrl (Firebase - always HTTPS)
-              const rawFileUri = args.fileUri;
-              const imageMimeType = args.mimeType || 'image/png';
-              const editPrompt = args.prompt;
-
-              // Hybrid Selector: gai-image:// is temp internal ref (expires), use storageUrl instead
-              const isInternalGenerativeUri = rawFileUri?.startsWith('gai-image://');
-              const imageFileUri = (rawFileUri && !isInternalGenerativeUri) ? rawFileUri : imageUrl;
-
-              console.log(`[ImageAgent] Editing image | storageUrl: ${imageUrl} | rawFileUri: ${rawFileUri} | finalUri: ${imageFileUri} | mimeType: ${imageMimeType}`);
-
-              // Notify frontend that image editing is starting
-              res.write(`data: ${JSON.stringify({ generatingImage: true })}\n\n`);
-              if ((res as any).flush) (res as any).flush();
-
-              // Call the image model with existing image (Gemini API - supports fileUri)
-              const editImageAI = getAI();
-              const editResponse = await editImageAI.models.generateContent({
-                model: "gemini-2.5-flash-image",
-                contents: [{
-                  role: "user",
-                  parts: [
-                    { fileData: { fileUri: imageFileUri, mimeType: imageMimeType } },
-                    { text: `${editPrompt}. Keep original aspect ratio and orientation.` }
-                  ]
-                }],
-                config: {
-                  responseModalities: ['TEXT', 'IMAGE']
-                }
-              });
-
-              const editParts = editResponse.candidates?.[0]?.content?.parts || [];
-              for (const editPart of editParts) {
-                // Only send images, ignore text from image model (agent already writes text)
-                if (editPart.inlineData && editPart.inlineData.data) {
-                  const mimeType = editPart.inlineData.mimeType || 'image/png';
-                  const base64Data = editPart.inlineData.data.replace(/\r?\n|\r/g, '');
-                  res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
-                  if ((res as any).flush) (res as any).flush();
-                }
-              }
-            }
-          } else if (part.text) {
-            res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
-            if ((res as any).flush) (res as any).flush();
-          }
         }
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
@@ -663,7 +467,7 @@ export const streamChat = onRequest(
         // PRO IMAGE MODEL: Uses handler with thoughtSignature for multi-turn editing
         const proImageAI = getAI();
         const proImageContents = await buildProImageContents(history || [], newMessage || "", attachments || []);
-        await handleProImageStream(proImageAI, proImageContents, res);
+        await handleProImageStream(proImageAI, proImageContents, res, userId);
         res.end();
         return;
       } else {
@@ -704,8 +508,6 @@ export const streamChat = onRequest(
           };
         }
 
-        console.log(`[DEBUG] Model: ${selectedModelId}, isPro: ${isPro}, isPro25: ${isPro25}, isFlash: ${isFlash}`);
-
         // All chat models use API Key
         const chatAI = getAI();
 
@@ -724,23 +526,17 @@ export const streamChat = onRequest(
              const parts = candidates[0].content?.parts;
              if (parts) {
                  for (const part of parts) {
-                     // DEBUG: Log each part type
-                     const partKeys = Object.keys(part);
-                     console.log(`[DEBUG] Part keys: ${partKeys.join(', ')}`);
-
-                     // Check for tool calls and SEND to client
-                     if ((part as any).functionCall) {
-                         console.log(`[DEBUG] FUNCTION CALL:`, JSON.stringify((part as any).functionCall));
-                     }
-                     if ((part as any).executableCode) {
-                        console.log(`[DEBUG] CODE EXECUTION - hidden from user`);
-                        // Code is NEVER sent to client - only images from results
+                    // Log executable code (when model calls code execution)
+                    if ((part as any).executableCode) {
+                        console.log(`[CODE] Executing: ${(part as any).executableCode.code?.substring(0, 100)}...`);
                     }
-                    if ((part as any).codeExecutionResult) {
-                        const output = (part as any).codeExecutionResult.output || '';
-                        console.log(`[DEBUG] CODE RESULT - checking for images`);
 
-                        // Only send images to client - hide everything else
+                    // Code execution result
+                    if ((part as any).codeExecutionResult) {
+                        const result = (part as any).codeExecutionResult;
+                        console.log(`[CODE] Result outcome: ${result.outcome}, output length: ${result.output?.length || 0}`);
+
+                        const output = result.output || '';
                         const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
                         const imageMatch = output.match(base64ImageRegex);
                         if (imageMatch) {
@@ -749,16 +545,15 @@ export const streamChat = onRequest(
                             res.write(`data: ${JSON.stringify({ image: { mimeType, data: base64Data } })}\n\n`);
                             if ((res as any).flush) (res as any).flush();
                         }
-                        // Text output and errors are hidden - only images shown
                     }
 
-                    // Handle inline images from code execution (matplotlib graphs, etc.)
+                    // Inline images from code execution (matplotlib graphs)
                     if ((part as any).inlineData) {
-                        console.log(`[DEBUG] INLINE DATA (graph):`, (part as any).inlineData.mimeType);
+                        console.log(`[GRAPH] Received inline image: ${(part as any).inlineData.mimeType}`);
                         const inlineData = (part as any).inlineData;
                         const mimeType = inlineData.mimeType || 'image/png';
                         const base64Data = inlineData.data;
-                        // Send as GRAPH event (separate from image-agent images)
+                        // Send as GRAPH event (separate from generated images)
                         res.write(`data: ${JSON.stringify({
                             graph: { mimeType, data: base64Data }
                         })}\n\n`);
@@ -899,7 +694,7 @@ export const unifiedUpload = onRequest(
   async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     if (req.method === "OPTIONS") {
       res.status(200).end();
@@ -910,6 +705,11 @@ export const unifiedUpload = onRequest(
       res.status(405).json({ error: "Method not allowed" });
       return;
     }
+
+    // --- AUTH VERIFICATION ---
+    const authUser = await verifyAuth(req, res);
+    if (!authUser) return; // verifyAuth already sent 401 response
+    const userId = authUser.uid; // Use verified userId from token, not from request body!
 
     try {
       const { fileName, mimeType, fileBufferBase64 } = req.body;
@@ -938,7 +738,7 @@ export const unifiedUpload = onRequest(
       const [fbUploadResult, aiUploadResult] = await Promise.all([
         // Firebase Storage upload (keeps original fileName - Firebase supports UTF-8)
         bucket.upload(tempPath, {
-          destination: `attachments/${timestamp}_${fileName}`,
+          destination: `users/${userId}/attachments/${timestamp}_${fileName}`,
           metadata: { contentType: mimeType }
         }),
         // Google AI File API upload using @google/genai SDK

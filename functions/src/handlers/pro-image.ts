@@ -141,7 +141,8 @@ export async function buildProImageContents(
 export async function handleProImageStream(
     ai: GoogleGenAI,
     contents: Content[],
-    res: Response
+    res: Response,
+    userId?: string
 ): Promise<void> {
     console.log(`[PRO IMAGE] Starting stream...`);
 
@@ -185,7 +186,7 @@ export async function handleProImageStream(
 
                     try {
                         // Dual upload for multi-turn history (ai instance required for File API)
-                        const { storageUrl, fileUri } = await dualUpload(ai, base64Data, mimeType);
+                        const { storageUrl, fileUri } = await dualUpload(ai, base64Data, mimeType, userId);
                         console.log(`[PRO IMAGE] Dual upload success`);
 
                         // Send image with both URLs + aspectRatio

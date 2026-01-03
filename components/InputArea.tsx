@@ -3,6 +3,7 @@ import { ArrowUp, Plus, X, Mic, Square, FileText, Image as ImageIcon, Loader2, U
 import { Attachment, PromptSettings, ModelId, ChatMessage, AspectRatio, ImageStyle } from '../types';
 import { fileToBase64 } from '../services/geminiService';
 import { useAuth } from '../hooks/useAuth';
+import { auth } from '../firebase';
 import { translations, Language, TranslationKey } from '../translations';
 
 const UNIFIED_UPLOAD_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net/unifiedUpload';
@@ -17,6 +18,12 @@ const uploadAttachment = async (
   originalName?: string
 ): Promise<{ storageUrl: string; fileUri: string }> => {
   try {
+    // Get Firebase ID token for authentication
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) {
+      throw new Error("Not authenticated");
+    }
+
     // Validate size (20MB limit)
     if (base64Data.length > 28 * 1024 * 1024) {
       throw new Error("File too large (max 20MB)");
@@ -24,7 +31,10 @@ const uploadAttachment = async (
 
     const response = await fetch(UNIFIED_UPLOAD_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({
         fileName: originalName || `file_${Date.now()}`,
         mimeType,

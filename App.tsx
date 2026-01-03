@@ -206,8 +206,9 @@ const App: React.FC = () => {
 
   // --- FEATURE: Handle deleted session ---
   useEffect(() => {
-    if (currentSessionId && !sessions.find(s => s.id === currentSessionId) && sessions.length > 0) {
-      setCurrentSessionId(sessions[0].id);
+    if (currentSessionId && !sessions.find(s => s.id === currentSessionId)) {
+      // Current session was deleted - switch to first available or reset to new chat
+      setCurrentSessionId(sessions.length > 0 ? sessions[0].id : null);
     }
   }, [sessions, currentSessionId, setCurrentSessionId]);
 
@@ -408,10 +409,11 @@ const App: React.FC = () => {
 
       const finalResponseText = await streamChatResponse(
         messages, finalText, attachmentsForApi, modelToUse, settings,
-        { 
+        {
             showSuggestions: appSettings.showSuggestions,
             userName: appSettings.userName // PASS USER NAME TO BACKEND
-        }, 
+        },
+        user?.uid,
         (chunk) => {
           // Hide "Loading" spinner as soon as first chunk arrives
           if (firstChunk) {

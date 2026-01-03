@@ -1,4 +1,5 @@
 import { Attachment, ChatMessage, ModelId, PromptSettings, TONE_PROMPTS, Source } from "../types";
+import { auth } from "../firebase";
 
 // Cloud Function URLs
 const BASE_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net';
@@ -16,6 +17,7 @@ export const streamChatResponse = async (
   modelId: ModelId,
   settings: PromptSettings,
   appSettings: { showSuggestions: boolean; userName?: string },
+  userId: string | undefined,
   onChunk: (text: string) => void,
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
@@ -35,11 +37,18 @@ export const streamChatResponse = async (
   }
 
   try {
+    // Get Firebase ID token for authentication
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) {
+      throw new Error("Not authenticated");
+    }
+
     // Call Cloud Function with SSE streaming
     const response = await fetch(STREAM_CHAT_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
         history: history.map(msg => ({
@@ -52,6 +61,7 @@ export const streamChatResponse = async (
         newMessage,
         attachments,
         modelId, // Pass the selected model directly - Server handles routing!
+        userId,
         settings: {
           systemInstruction: finalSystemInstruction,
           aspectRatio: settings.aspectRatio,
@@ -107,7 +117,7 @@ export const streamChatResponse = async (
               onChunk(data.text);
             }
 
-            // Handle image event (from image-agent or pro-image)
+            // Handle image event (from pro-image model)
             // Marker is added HERE so fullText includes it (saved to DB correctly)
             if (data.image) {
               console.log("GeminiService: RECEIVED IMAGE EVENT!", data.image.mimeType);

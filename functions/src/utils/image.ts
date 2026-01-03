@@ -97,11 +97,13 @@ export const fetchImageAsBase64 = async (url: string): Promise<{ base64: string;
 // Upload image to Firebase Storage and return signed URL
 export const uploadToStorage = async (
     base64Data: string,
-    mimeType: string
+    mimeType: string,
+    userId?: string
 ): Promise<string> => {
     const bucket = admin.storage().bucket();
     const extension = mimeType.split('/')[1] || 'png';
-    const fileName = `generated/${Date.now()}.${extension}`;
+    const basePath = userId ? `users/${userId}/generated` : 'generated';
+    const fileName = `${basePath}/${Date.now()}.${extension}`;
     const tempPath = `/tmp/${Date.now()}.${extension}`;
 
     // Write to temp file
@@ -159,10 +161,12 @@ export const uploadToFileApi = async (
 export const dualUpload = async (
     ai: GoogleGenAI,
     base64Data: string,
-    mimeType: string
+    mimeType: string,
+    userId?: string
 ): Promise<{ storageUrl: string; fileUri: string }> => {
     const extension = mimeType.split('/')[1] || 'png';
     const fileName = `generated_${Date.now()}.${extension}`;
+    const basePath = userId ? `users/${userId}/generated` : 'generated';
     const tempPath = `/tmp/${fileName}`;
 
     // Write to temp file once
@@ -174,7 +178,7 @@ export const dualUpload = async (
     // Parallel upload: Firebase Storage + Google AI File API
     const [fbResult, aiResult] = await Promise.all([
         bucket.upload(tempPath, {
-            destination: `generated/${fileName}`,
+            destination: `${basePath}/${fileName}`,
             metadata: { contentType: mimeType }
         }),
         ai.files.upload({
