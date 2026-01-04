@@ -5,6 +5,7 @@ import InputArea from './components/InputArea';
 import ChatLoadingOverlay from './components/ChatLoadingOverlay';
 import Sidebar from './components/Sidebar';
 import SettingsModal from './components/SettingsModal';
+import { Lightbox } from './components/Lightbox';
 import { streamChatResponse } from './services/geminiService';
 import { uploadGeneratedImage } from './services/transformService';
 import { ChevronDown, Zap, Brain, Menu, Image as ImageIcon, Check, Sparkles, Cpu } from 'lucide-react';
@@ -39,6 +40,7 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [suggestionText, setSuggestionText] = useState<string>('');
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   
   // Streaming State (UI Only)
   const [streamingMessage, setStreamingMessage] = useState<ChatMessage | null>(null);
@@ -748,6 +750,7 @@ const App: React.FC = () => {
               user={userWithPreferredName}
               language={resolveLanguage(appSettings.language)}
               sessionId={currentSessionId}
+              onOpenLightbox={setLightboxSrc}
             />
             <div ref={inputAreaRef}>
               <InputArea
@@ -764,6 +767,7 @@ const App: React.FC = () => {
             </div>
           </div>
       </div>
+      <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </div>
   );
 };

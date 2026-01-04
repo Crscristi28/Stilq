@@ -54,7 +54,7 @@ export const streamChatResponse = async (
           role: msg.role,
           text: msg.text,
           imageUrls: msg.attachments
-            ?.filter(att => att.mimeType?.startsWith('image/') && att.storageUrl)
+            ?.filter(att => att.mimeType?.startsWith('image/') && att.storageUrl && !att.isGraph)
             .map(att => att.storageUrl),
         })),
         newMessage,

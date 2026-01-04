@@ -58,6 +58,7 @@ export interface MessageItemProps {
   onToggleTTSSettings: (id: string | null) => void;
   onSaveTTSSettings: (voiceURI: string, rate: number) => void;
   onSuggestionClick?: (text: string) => void;
+  onOpenLightbox?: (src: string) => void;
 }
 
 // --- MessageItem Component ---
@@ -85,7 +86,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
   onHandleShare,
   onToggleTTSSettings,
   onSaveTTSSettings,
-  onSuggestionClick
+  onSuggestionClick,
+  onOpenLightbox
 }) => {
 
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
@@ -121,7 +123,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                             <img
                                 src={msg.attachments[0].storageUrl || `data:${msg.attachments[0].mimeType};base64,${msg.attachments[0].data}`}
                                 alt="attachment"
-                                className="w-full h-auto object-contain max-h-[400px]"
+                                className="w-full h-auto object-contain max-h-[400px] cursor-pointer"
+                                onClick={() => onOpenLightbox?.(msg.attachments[0].storageUrl || `data:${msg.attachments[0].mimeType};base64,${msg.attachments[0].data}`)}
                             />
                         </div>
                     ) : (
@@ -133,7 +136,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                             <img
                                                 src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
                                                 alt="attachment"
-                                                className="h-full w-full object-contain"
+                                                className="h-full w-full object-contain cursor-pointer"
+                                                onClick={() => onOpenLightbox?.(att.storageUrl || `data:${att.mimeType};base64,${att.data}`)}
                                             />
                                         </div>
                                     ) : (
@@ -296,6 +300,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                              );
                                          }
                                          if (att.storageUrl || att.data) {
+                                             const imgSrc = att.storageUrl || `data:${att.mimeType};base64,${att.data}`;
                                              return (
                                                  <div
                                                      key={idx}
@@ -303,9 +308,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                                      style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
                                                  >
                                                      <img
-                                                         src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                                         src={imgSrc}
                                                          alt="Graph"
-                                                         className="w-full h-full object-contain"
+                                                         className="w-full h-full object-contain cursor-pointer"
+                                                         onClick={() => onOpenLightbox?.(imgSrc)}
                                                      />
                                                  </div>
                                              );
@@ -335,6 +341,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                              );
                                          }
                                          if (att.storageUrl || att.data) {
+                                             const imgSrc = att.storageUrl || `data:${att.mimeType};base64,${att.data}`;
                                              return (
                                                  <div
                                                      key={idx}
@@ -342,9 +349,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                                      style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
                                                  >
                                                      <img
-                                                         src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                                         src={imgSrc}
                                                          alt="Generated image"
-                                                         className="w-full h-full object-contain"
+                                                         className="w-full h-full object-contain cursor-pointer"
+                                                         onClick={() => onOpenLightbox?.(imgSrc)}
                                                      />
                                                  </div>
                                              );
@@ -369,7 +377,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 // Find indices of images that have inline markers
                 const inlineIndices = new Set<number>();
                 const markerRegex = /\[IMAGE:(\d+)\]/g;
-                let match;
+                let match: RegExpExecArray | null;
                 while ((match = markerRegex.exec(msg.text)) !== null) {
                     inlineIndices.add(parseInt(match[1], 10));
                 }
@@ -407,6 +415,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
                             // Real image - same fixed width to prevent layout shift
                             if (att.storageUrl || att.data) {
+                                const imgSrc = att.storageUrl || `data:${att.mimeType};base64,${att.data}`;
                                 return (
                                     <div
                                         key={displayIdx}
@@ -414,9 +423,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                         style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
                                     >
                                         <img
-                                            src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
+                                            src={imgSrc}
                                             alt="Generated image"
-                                            className="w-full h-full object-contain"
+                                            className="w-full h-full object-contain cursor-pointer"
+                                            onClick={() => onOpenLightbox?.(imgSrc)}
                                         />
                                     </div>
                                 );

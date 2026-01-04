@@ -28,6 +28,10 @@ interface ChatAttachment {
     fileUri?: string;
 }
 
+// Context limits for Pro Image model
+const MAX_HISTORY_MESSAGES = 10;
+const MAX_HISTORY_IMAGES = 8;
+
 // Build contents with inlineData + thoughtSignature for multi-turn editing
 export async function buildProImageContents(
     history: HistoryMessage[],
@@ -39,8 +43,12 @@ export async function buildProImageContents(
     console.log(`[PRO IMAGE BUILD] New message: "${newMessage.substring(0, 100)}..."`);
     console.log(`[PRO IMAGE BUILD] Attachments: ${attachments.length}`);
 
+    // Limit history to last N messages to avoid context overflow
+    const limitedHistory = history.slice(-MAX_HISTORY_MESSAGES);
+    console.log(`[PRO IMAGE BUILD] Limited history to ${limitedHistory.length} messages (max ${MAX_HISTORY_MESSAGES})`);
+
     // Log history details
-    history.forEach((msg, i) => {
+    limitedHistory.forEach((msg, i) => {
         const imageCount = msg.imageUrls?.length || 0;
         console.log(`[PRO IMAGE BUILD] History[${i}] role=${msg.role} text="${msg.text?.substring(0, 50)}..." images=${imageCount}`);
     });
@@ -52,13 +60,34 @@ export async function buildProImageContents(
 
     const contents: Content[] = [];
 
-    // Process history with thoughtSignature for model parts
-    for (const msg of history) {
-        const msgParts: Part[] = [];
-
-        // Fetch and add images from history as inlineData
+    // First pass: collect all image URLs from history (newest first)
+    const allHistoryImageUrls: { msgIndex: number; url: string }[] = [];
+    for (let i = limitedHistory.length - 1; i >= 0; i--) {
+        const msg = limitedHistory[i];
         if (msg.imageUrls && msg.imageUrls.length > 0) {
             for (const url of msg.imageUrls) {
+                allHistoryImageUrls.push({ msgIndex: i, url });
+            }
+        }
+    }
+
+    // Take only the newest N images
+    const allowedImageUrls = new Set(
+        allHistoryImageUrls.slice(0, MAX_HISTORY_IMAGES).map(item => item.url)
+    );
+    console.log(`[PRO IMAGE] Allowing ${allowedImageUrls.size} newest images from history (limit: ${MAX_HISTORY_IMAGES})`);
+
+    // Process history with thoughtSignature for model parts
+    for (const msg of limitedHistory) {
+        const msgParts: Part[] = [];
+
+        // Fetch and add images from history as inlineData (only allowed newest ones)
+        if (msg.imageUrls && msg.imageUrls.length > 0) {
+            for (const url of msg.imageUrls) {
+                if (!allowedImageUrls.has(url)) {
+                    console.log(`[PRO IMAGE] Skipping old image (not in newest ${MAX_HISTORY_IMAGES})`);
+                    continue;
+                }
                 const imageData = await fetchImageAsBase64(url);
                 if (imageData) {
                     // ALL parts need thoughtSignature for multi-turn to work
@@ -146,21 +175,22 @@ export async function handleProImageStream(
 ): Promise<void> {
     console.log(`[PRO IMAGE] Starting stream...`);
 
-    const result = await ai.models.generateContentStream({
-        model: "gemini-3-pro-image-preview",
-        contents,
-        config: {
-            tools: [{ googleSearch: {} }],
-            responseModalities: ['TEXT', 'IMAGE'],
-            topP: 0.95,
-            maxOutputTokens: 32768,
-            systemInstruction: PRO_IMAGE_SYSTEM_PROMPT,
-        },
-    });
+    try {
+        const result = await ai.models.generateContentStream({
+            model: "gemini-3-pro-image-preview",
+            contents,
+            config: {
+                tools: [{ googleSearch: {} }],
+                responseModalities: ['TEXT', 'IMAGE'],
+                topP: 0.95,
+                maxOutputTokens: 32768,
+                systemInstruction: PRO_IMAGE_SYSTEM_PROMPT,
+            },
+        });
 
-    let sentMetadata = false;
+        let sentMetadata = false;
 
-    for await (const chunk of result) {
+        for await (const chunk of result) {
         if (chunk.candidates && chunk.candidates[0]?.content?.parts) {
             const parts = chunk.candidates[0].content.parts;
 
@@ -236,4 +266,12 @@ export async function handleProImageStream(
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     if ((res as any).flush) (res as any).flush();
     console.log(`[PRO IMAGE] Stream complete`);
+
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[PRO IMAGE] Stream error:`, errorMessage);
+        console.error(`[PRO IMAGE] Full error:`, error);
+        res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
+    }
 }

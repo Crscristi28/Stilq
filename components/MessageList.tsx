@@ -18,10 +18,11 @@ interface MessageListProps {
   user?: UserProfile | null;
   language: string;
   sessionId?: string | null;
+  onOpenLightbox?: (src: string) => void;
 }
 
 // --- Main MessageList Component ---
-const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, currentMode, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language, sessionId }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, currentMode, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language, sessionId, onOpenLightbox }) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
@@ -269,6 +270,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
                         onToggleTTSSettings={handleToggleTTSSettings}
                         onSaveTTSSettings={handleSaveTTSSettings}
                         onSuggestionClick={onSuggestionClick}
+                        onOpenLightbox={onOpenLightbox}
                     />
                 )}
                 components={{ Footer: () => <div style={{ height: footerHeight }} /> }}
