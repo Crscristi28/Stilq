@@ -50,7 +50,14 @@ const extractStoragePath = (storageUrl: string): string | null => {
  * Path: users/{userId}/chats/{chatId}
  */
 export const onChatDeleted = onDocumentDeleted(
-    "users/{userId}/chats/{chatId}",
+    {
+        document: "users/{userId}/chats/{chatId}",
+        memory: "512MiB",
+        cpu: 1,
+        concurrency: 80,
+        maxInstances: 10,
+        timeoutSeconds: 120,
+    },
     async (event) => {
         const { userId, chatId } = event.params;
         console.log(`[ChatCleanup] Chat deleted: ${chatId} by user: ${userId}`);

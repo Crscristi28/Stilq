@@ -138,9 +138,12 @@ export const streamChat = onRequest(
   {
     timeoutSeconds: 540,
     memory: "1GiB",
+    cpu: 1,
+    concurrency: 50,
+    maxInstances: 10,
     cors: true,
     secrets: ["GEMINI_API_KEY"],
-    minInstances: 1,
+    minInstances: 0,
   },
   async (req, res) => {
     // CORS headers
@@ -480,7 +483,7 @@ export const streamChat = onRequest(
           // Gemini 3 Flash (thinkingLevel options: MINIMAL, LOW, MEDIUM, HIGH)
           modelConfig = {
             tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
-            thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.MEDIUM },
+            thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.LOW },
             temperature: 1.0,
             topP: 0.95,
             maxOutputTokens: 64000,
@@ -603,6 +606,9 @@ export const unifiedUpload = onRequest(
     cors: true,
     secrets: ["GEMINI_API_KEY"],
     memory: "1GiB",
+    cpu: 1,
+    concurrency: 80,
+    maxInstances: 20,
     timeoutSeconds: 540,
   },
   async (req, res) => {

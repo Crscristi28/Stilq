@@ -182,6 +182,7 @@ export async function handleProImageStream(
             config: {
                 tools: [{ googleSearch: {} }],
                 responseModalities: ['TEXT', 'IMAGE'],
+                thinkingConfig: { includeThoughts: true },
                 topP: 0.95,
                 maxOutputTokens: 32768,
                 systemInstruction: PRO_IMAGE_SYSTEM_PROMPT,
@@ -195,24 +196,35 @@ export async function handleProImageStream(
             const parts = chunk.candidates[0].content.parts;
 
             for (const part of parts) {
-                // Check for thought (draft) content - skip images in thoughts
+                // Check for thought (draft) content
                 const isThought = (part as any).thought === true;
+                const hasText = !!part.text;
+                const hasInlineData = !!(part as any).inlineData;
 
-                // Handle text
-                if (part.text) {
+                // LOG EVERY PART
+                console.log(`[PRO IMAGE PART] thought: ${isThought}, text: ${hasText ? part.text?.substring(0, 50) + '...' : 'NO'}, inlineData: ${hasInlineData ? 'YES' : 'NO'}`);
+
+                // Thinking
+                if (isThought && part.text) {
+                    res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
+                    if ((res as any).flush) (res as any).flush();
+                } else if (part.text) {
                     res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
                     if ((res as any).flush) (res as any).flush();
                 }
 
-                // Handle native image output (skip draft images in thoughts)
+                // Handle native image output - only send thought:true images (real), skip thought:false (duplicates)
                 if ((part as any).inlineData && !isThought) {
+                    // Skip duplicate images sent after thinking ends
+                    console.log(`[PRO IMAGE] Skipping duplicate image (thought: false)`);
+                } else if ((part as any).inlineData && isThought) {
                     const inlineData = (part as any).inlineData;
                     const mimeType = inlineData.mimeType || 'image/png';
                     const base64Data = inlineData.data;
 
                     // Detect aspect ratio
                     const aspectRatio = detectAspectRatio(base64Data);
-                    console.log(`[PRO IMAGE] Received image (${aspectRatio}), starting dual upload...`);
+                    console.log(`[PRO IMAGE] Real image from thinking - aspectRatio: ${aspectRatio}`);
 
                     try {
                         // Dual upload for multi-turn history (ai instance required for File API)
