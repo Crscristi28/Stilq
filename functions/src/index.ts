@@ -1,4 +1,4 @@
-
+// Force deploy: 2026-01-10-v1.2.6-euphemisms-context
 import { onRequest } from "firebase-functions/v2/https";
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
 import * as admin from "firebase-admin";
