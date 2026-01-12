@@ -1,4 +1,4 @@
-// Force deploy: 2026-01-10-v1.2.6-euphemisms-context
+// Force deploy: 2026-01-10-v1.2.8-combined-trigger
 import { onRequest } from "firebase-functions/v2/https";
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
 import * as admin from "firebase-admin";
@@ -11,7 +11,7 @@ import { PRO25_SYSTEM_PROMPT } from "./prompts/pro25";
 import { PRO3_PREVIEW_SYSTEM_PROMPT } from "./prompts/pro3-preview";
 import { buildProImageContents, handleProImageStream } from "./handlers/pro-image";
 import { onChatDeleted } from "./handlers/chat-cleanup";
-import { streamWithRetry, retryWithPro } from "./handlers/error-handler";
+import { streamChatWithRetry } from "./handlers/error-handler";
 import { verifyAuth } from "./utils/auth";
 
 admin.initializeApp();
@@ -249,13 +249,19 @@ export const streamChat = onRequest(
       // Model checks for history limiting (must be before contents)
       const isImageGen = selectedModelId === "gemini-2.5-flash-image";
       const isResearch = selectedModelId === "research";
+      const isFlash3 = selectedModelId === "gemini-3-flash-preview";
+      const isPro3 = selectedModelId === "gemini-3-pro-preview";
 
-      // Limit history for expensive/specialized models (save tokens & costs)
+      // Limit history based on model (save tokens & prevent context overflow)
       const limitedHistory = isImageGen
-        ? (history || []).slice(-1)   // Image mode: last 1 message
+        ? (history || []).slice(-1)    // Image mode: last 1 message
         : isResearch
-        ? (history || []).slice(-2)   // Research mode: last 2 messages
-        : (history || []);            // Others: full history
+        ? (history || []).slice(-2)    // Research mode: last 2 messages
+        : isFlash3
+        ? (history || []).slice(-300)  // Flash 3: last 300 messages
+        : isPro3
+        ? (history || []).slice(-150)  // Pro 3: last 150 messages (1M context window)
+        : (history || []);             // Pro 2.5: full history (2M context)
 
       // Convert history (clean - no image URLs, saves tokens for non-image models)
       const contents: Content[] = [
@@ -514,8 +520,8 @@ export const streamChat = onRequest(
         // All chat models use API Key
         const chatAI = getAI();
 
-        // Use modular streaming handler
-        const streamResult = await streamWithRetry(
+        // Use smart streaming handler with automatic retry for Flash 3 and Pro 3
+        const streamResult = await streamChatWithRetry(
           chatAI,
           selectedModelId || "gemini-3-flash-preview",
           contents,
@@ -523,12 +529,6 @@ export const streamChat = onRequest(
           res
         );
         fullResponseText = streamResult.text;
-
-        // Retry with Pro if Flash returned empty response
-        if (isFlash && fullResponseText.trim().length === 0) {
-          const retryResult = await retryWithPro(chatAI, contents, systemInstruction || "", res);
-          fullResponseText = retryResult.text;
-        }
 
         // --- SUGGESTION GENERATION (Server-Side Pipeline) ---
         // CHECK USER PREFERENCE: Default to true if undefined

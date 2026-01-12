@@ -15,6 +15,7 @@
   /* Custom animations */
   --animate-fade-in: fadeIn 0.3s ease-out;
   --animate-slide-up: slideUp 0.4s ease-out;
+  --animate-shimmer: shimmer 4s ease-in-out infinite;
 }
 
 /* 
@@ -45,6 +46,27 @@ body {
 @keyframes slideUp {
   0% { opacity: 0; transform: translateY(10px); }
   100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes spinnerRotate {
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes spinnerDash {
+  0% { stroke-dasharray: 1, 100; stroke-dashoffset: 0; }
+  50% { stroke-dasharray: 70, 100; stroke-dashoffset: -20; }
+  100% { stroke-dasharray: 1, 100; stroke-dashoffset: -100; }
+}
+
+@keyframes spinnerPulse {
+  0% { transform: rotate(-90deg); }
+  97% { transform: rotate(270deg); }
+  100% { transform: rotate(270deg); }
 }
 
 /* Horizontal scroll fade effect */

@@ -6,7 +6,7 @@
  * - Future: 429, 500, offline, 404, 400 handling
  */
 
-import { GoogleGenAI, Content, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, Content } from "@google/genai";
 import { Response } from "express";
 import { detectAspectRatio } from "../utils/image";
 
@@ -28,8 +28,10 @@ export async function streamWithRetry(
 ): Promise<StreamResult> {
     let fullText = "";
     let sentMetadata = false;
+    let chunkCount = 0;
 
     try {
+        console.log(`[STREAM START] Model: ${model}`);
         const result = await ai.models.generateContentStream({
             model,
             contents,
@@ -37,7 +39,32 @@ export async function streamWithRetry(
         });
 
         for await (const chunk of result) {
+            chunkCount++;
             const candidates = (chunk as any).candidates;
+
+            // Check for promptFeedback (model blocked before generating)
+            const promptFeedback = (chunk as any).promptFeedback;
+            if (promptFeedback) {
+                console.log(`[PROMPT FEEDBACK] blockReason: ${promptFeedback.blockReason || 'none'}`);
+                if (promptFeedback.safetyRatings) {
+                    console.log(`[SAFETY RATINGS]`, JSON.stringify(promptFeedback.safetyRatings, null, 2));
+                }
+                if (promptFeedback.blockReasonMessage) {
+                    console.log(`[BLOCK MESSAGE] ${promptFeedback.blockReasonMessage}`);
+                }
+            }
+
+            // Log chunk details for debugging
+            if (candidates && candidates.length > 0) {
+                const finishReason = candidates[0].finishReason;
+                if (finishReason) {
+                    console.log(`[STREAM CHUNK ${chunkCount}] finishReason: ${finishReason}`);
+                }
+            } else {
+                // No candidates - log full chunk to see what's wrong
+                console.log(`[STREAM CHUNK ${chunkCount}] No candidates - Full chunk:`, JSON.stringify(chunk, null, 2));
+            }
+
             if (candidates && candidates.length > 0) {
                 const parts = candidates[0].content?.parts;
                 if (parts) {
@@ -118,6 +145,7 @@ export async function streamWithRetry(
             if ((res as any).flush) (res as any).flush();
         }
 
+        console.log(`[STREAM END] Model: ${model} | Chunks: ${chunkCount} | Text length: ${fullText.length}`);
         return { text: fullText, success: true };
     } catch (error) {
         console.error(`[STREAM ERROR] ${model}:`, error);
@@ -126,28 +154,52 @@ export async function streamWithRetry(
 }
 
 /**
- * Retry with Pro model when Flash returns empty
+ * Retry with Pro 2.5 model when Flash/Pro 3 returns empty or blocked
  */
-export async function retryWithPro(
+async function retryWithPro25(
     ai: GoogleGenAI,
     contents: Content[],
     systemInstruction: string,
-    res: Response
+    res: Response,
+    fromModel: string
 ): Promise<StreamResult> {
-    console.log(`[RETRY] Flash returned empty, switching to Pro...`);
-    res.write(`data: ${JSON.stringify({ retry: true, model: "gemini-3-pro-preview" })}\n\n`);
+    console.log(`[RETRY] ${fromModel} returned empty/blocked, switching to Pro 2.5...`);
+    res.write(`data: ${JSON.stringify({ retry: true, model: "gemini-2.5-pro", from: fromModel })}\n\n`);
     if ((res as any).flush) (res as any).flush();
 
     const proConfig = {
         tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
-        thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.LOW },
-        temperature: 1.0,
+        thinkingConfig: { includeThoughts: true, thinkingBudget: 4096 },
+        temperature: 0.6,
         topP: 0.95,
         maxOutputTokens: 65536,
         systemInstruction,
     };
 
-    return streamWithRetry(ai, "gemini-3-pro-preview", contents, proConfig, res);
+    return streamWithRetry(ai, "gemini-2.5-pro", contents, proConfig, res);
+}
+
+/**
+ * Smart streaming with automatic retry for Flash 3 and Pro 3
+ * Both models can fail with blockReason: OTHER, so fallback to Pro 2.5
+ */
+export async function streamChatWithRetry(
+    ai: GoogleGenAI,
+    model: string,
+    contents: Content[],
+    config: any,
+    res: Response
+): Promise<StreamResult> {
+    const result = await streamWithRetry(ai, model, contents, config, res);
+
+    // Auto-retry Flash 3 and Pro 3 with Pro 2.5 fallback when they return empty
+    if (result.text.trim().length === 0) {
+        if (model === "gemini-3-flash-preview" || model === "gemini-3-pro-preview") {
+            return retryWithPro25(ai, contents, config.systemInstruction || "", res, model);
+        }
+    }
+
+    return result;
 }
 
 // Future error handlers:

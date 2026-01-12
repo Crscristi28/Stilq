@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChatMessage, Role, Attachment, Source } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
-import Indicators from './Indicators';
 import {
-  AlertCircle, Sparkles, Copy, Check,
+  AlertCircle, Copy, Check,
   FileText, Pencil, Volume2, Square,
   FileCode, FileSpreadsheet, File, Reply, Settings2, X, Share2, Globe, ChevronDown, Printer
 } from 'lucide-react';
@@ -228,24 +227,49 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
         {/* Header */}
         <div className="flex items-center gap-3 mb-3 select-none">
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
-                msg.error
-                  ? 'bg-red-100 text-red-500'
-                  : msg.isStreaming && (!msg.text || msg.text.length === 0)
-                    ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white animate-pulse'
-                    : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
-            }`}>
-               {msg.error ? <AlertCircle size={14} /> : <Sparkles size={12} />}
+            <div className="relative w-9 h-9 flex items-center justify-center">
+                {/* Half-circle dashed spinner - wraps around entire 9x9 container */}
+                {msg.isStreaming && (
+                    <div className="absolute inset-0" style={{ animation: 'spinnerPulse 1.8s ease-in-out infinite' }}>
+                        <div className="w-full h-full rounded-full border-2 border-transparent border-t-blue-300 border-r-blue-300"
+                             style={{ borderStyle: 'dashed' }}>
+                        </div>
+                    </div>
+                )}
+
+                {/* Logo in center - 6x6 inside 9x9 container */}
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 shadow-sm overflow-hidden ${
+                    msg.error
+                      ? 'bg-red-100 text-red-500'
+                      : msg.isStreaming && (!msg.text || msg.text.length === 0)
+                        ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white animate-pulse'
+                        : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                }`}>
+                   {msg.error ? <AlertCircle size={14} /> : <img src="/stilq-icon.png" alt="Stilq" className="w-full h-full object-cover" />}
+                </div>
             </div>
 
             <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Stilq</span>
-                {msg.thinking && (
+                {/* Dynamic status - shown at start of streaming before text arrives */}
+                {msg.isStreaming && !msg.text && !msg.thinkingHeader && (
+                    <span className="text-[10px] font-medium uppercase tracking-wide animate-shimmer bg-gradient-to-r from-gray-600 via-gray-400 to-gray-600 dark:from-gray-500 dark:via-gray-200 dark:to-gray-500 bg-[length:200%_100%] bg-clip-text text-transparent">
+                        {selectedModel === 'gemini-3-pro-image-preview' ? 'Imagining' : currentMode === 'research' ? 'Deep researching' : 'Just a sec'}
+                    </span>
+                )}
+
+                {/* Dynamic thinking header - shown during streaming */}
+                {msg.isStreaming && msg.thinkingHeader && (
+                    <span className="text-[10px] font-medium uppercase tracking-wide animate-shimmer bg-gradient-to-r from-gray-600 via-gray-400 to-gray-600 dark:from-gray-500 dark:via-gray-200 dark:to-gray-500 bg-[length:200%_100%] bg-clip-text text-transparent">
+                        {msg.thinkingHeader}
+                    </span>
+                )}
+
+                {/* Thinking Process button - shown when response is complete (replaces thinking header) */}
+                {msg.thinking && !msg.isStreaming && (
                     <button
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                         className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors text-[10px] font-medium text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-transparent"
                     >
-                        <Sparkles size={10} className="text-purple-500" />
                         <span>Thinking Process</span>
                         <ChevronDown size={10} className={`transition-transform duration-200 ${isThinkingExpanded ? 'rotate-180' : ''}`} />
                     </button>
@@ -263,11 +287,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
         {/* Body */}
         <div className="pl-0 md:pl-9 w-full">
             {msg.isStreaming && (!msg.text || msg.text.length === 0) ? (
-                <Indicators type={
-                    selectedModel === 'gemini-3-pro-image-preview' ? 'image'
-                    : currentMode === 'research' ? 'research'
-                    : 'default'
-                } />
+                <div className="h-4"></div>
             ) : (
                 <>
                     <div className="text-[15px] md:text-[16px] leading-7 text-gray-800 dark:text-gray-200 markdown-body font-sans antialiased">
@@ -293,7 +313,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                                      style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
                                                  >
                                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                                                         <Sparkles className="text-blue-500 animate-pulse" size={24} />
                                                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating graph...</span>
                                                      </div>
                                                  </div>
@@ -334,7 +353,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                                      style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
                                                  >
                                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                                                         <Sparkles className="text-blue-500 animate-pulse" size={24} />
                                                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating image...</span>
                                                      </div>
                                                  </div>
@@ -366,9 +384,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
                              });
                          })()}
                     </div>
-                    {msg.isStreaming && isGeneratingImage && (
-                        <Indicators type="generating" />
-                    )}
                 </>
             )}
 
@@ -406,7 +421,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                         style={{ width: '400px', maxWidth: '100%', aspectRatio: cssRatio }}
                                     >
                                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                                            <Sparkles className="text-blue-500 animate-pulse" size={24} />
                                             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Generating image...</span>
                                         </div>
                                     </div>

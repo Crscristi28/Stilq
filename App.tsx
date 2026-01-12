@@ -49,6 +49,7 @@ const App: React.FC = () => {
   // These exist outside the render cycle to handle high-frequency updates
   const streamBufferRef = useRef<string>("");
   const streamThinkingRef = useRef<string>("");
+  const streamThinkingHeaderRef = useRef<string>("");
   const streamSourcesRef = useRef<Source[]>([]);
   const streamSuggestionsRef = useRef<string[]>([]);
   const streamAttachmentsRef = useRef<Attachment[]>([]);
@@ -351,6 +352,7 @@ const App: React.FC = () => {
     // 1. Reset Refs
     streamBufferRef.current = "";
     streamThinkingRef.current = "";
+    streamThinkingHeaderRef.current = "";
     streamSourcesRef.current = [];
     streamSuggestionsRef.current = [];
     streamAttachmentsRef.current = [];
@@ -372,6 +374,7 @@ const App: React.FC = () => {
             // Optimization: Only rerender if data actually changed
             if (prev?.text === streamBufferRef.current &&
                 prev?.thinking === streamThinkingRef.current &&
+                prev?.thinkingHeader === streamThinkingHeaderRef.current &&
                 prev?.sources === streamSourcesRef.current &&
                 prev?.suggestions === streamSuggestionsRef.current &&
                 prev?.attachments === streamAttachmentsRef.current) {
@@ -382,6 +385,7 @@ const App: React.FC = () => {
                 role: Role.MODEL,
                 text: streamBufferRef.current, // Direct display - no smooth typing delay
                 thinking: streamThinkingRef.current,
+                thinkingHeader: streamThinkingHeaderRef.current,
                 sources: streamSourcesRef.current,
                 suggestions: streamSuggestionsRef.current,
                 attachments: streamAttachmentsRef.current, // Include generated images
@@ -439,6 +443,12 @@ const App: React.FC = () => {
         },
         (thoughtChunk) => {
             streamThinkingRef.current += thoughtChunk;
+
+            // Extract bold headers for dynamic thinking indicator
+            const boldMatch = thoughtChunk.match(/\*\*([^*]+)\*\*/);
+            if (boldMatch) {
+                streamThinkingHeaderRef.current = boldMatch[1];
+            }
         },
         (suggestions) => {
             console.log("APP: Received Suggestions:", suggestions); // DEBUG LOG

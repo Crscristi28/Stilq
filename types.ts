@@ -42,6 +42,7 @@ export interface ChatMessage {
   suggestions?: string[]; // New field for follow-up questions
   sources?: Source[]; // New field for citations/sources
   thinking?: string; // The internal monologue/reasoning process
+  thinkingHeader?: string; // Current thinking step (extracted bold header)
 }
 
 export interface ChatSession {
