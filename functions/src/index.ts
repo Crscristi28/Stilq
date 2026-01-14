@@ -1,4 +1,4 @@
-// Force deploy: 2026-01-10-v1.2.8-combined-trigger
+// Force deploy: 2026-01-13-v1.2.9-flash-prompt-pro3-thinking-logs
 import { onRequest } from "firebase-functions/v2/https";
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
 import * as admin from "firebase-admin";
@@ -249,19 +249,13 @@ export const streamChat = onRequest(
       // Model checks for history limiting (must be before contents)
       const isImageGen = selectedModelId === "gemini-2.5-flash-image";
       const isResearch = selectedModelId === "research";
-      const isFlash3 = selectedModelId === "gemini-3-flash-preview";
-      const isPro3 = selectedModelId === "gemini-3-pro-preview";
 
       // Limit history based on model (save tokens & prevent context overflow)
       const limitedHistory = isImageGen
         ? (history || []).slice(-1)    // Image mode: last 1 message
         : isResearch
         ? (history || []).slice(-2)    // Research mode: last 2 messages
-        : isFlash3
-        ? (history || []).slice(-300)  // Flash 3: last 300 messages
-        : isPro3
-        ? (history || []).slice(-150)  // Pro 3: last 150 messages (1M context window)
-        : (history || []);             // Pro 2.5: full history (2M context)
+        : (history || []);             // All other models: full history
 
       // Convert history (clean - no image URLs, saves tokens for non-image models)
       const contents: Content[] = [

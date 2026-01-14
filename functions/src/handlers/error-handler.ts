@@ -100,9 +100,11 @@ export async function streamWithRetry(
                         // Thinking vs regular text
                         const isThought = (part as any).thought === true;
                         if (isThought && part.text) {
+                            console.log(`[THINKING CHUNK] Length: ${part.text.length} | First 200 chars: "${part.text.substring(0, 200)}"`);
                             res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
                             if ((res as any).flush) (res as any).flush();
                         } else if (part.text) {
+                            console.log(`[TEXT CHUNK] Length: ${part.text.length} | First 200 chars: "${part.text.substring(0, 200)}"`);
                             fullText += part.text;
                             res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
                             if ((res as any).flush) (res as any).flush();

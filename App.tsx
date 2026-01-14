@@ -444,10 +444,16 @@ const App: React.FC = () => {
         (thoughtChunk) => {
             streamThinkingRef.current += thoughtChunk;
 
-            // Extract bold headers for dynamic thinking indicator
-            const boldMatch = thoughtChunk.match(/\*\*([^*]+)\*\*/);
-            if (boldMatch) {
-                streamThinkingHeaderRef.current = boldMatch[1];
+            // Extract headers for dynamic thinking indicator
+            // Matches: **Bold Text** or ## Markdown Header
+            const headerMatch = thoughtChunk.match(/(?:\*\*([^*]+)\*\*|^#{1,3}\s+(.+)$)/m);
+            if (headerMatch) {
+                // Group 1 = bold (**text**), Group 2 = markdown (## text)
+                const header = headerMatch[1] || headerMatch[2];
+                // Only use short headers (< 60 chars) to avoid long sentences
+                if (header && header.trim().length < 60) {
+                    streamThinkingHeaderRef.current = header.trim();
+                }
             }
         },
         (suggestions) => {
