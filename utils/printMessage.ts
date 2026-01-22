@@ -62,6 +62,9 @@ export const printMessage = (msg: ChatMessage): void => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Print Document</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -195,6 +198,11 @@ export const printMessage = (msg: ChatMessage): void => {
       font-weight: 500;
     }
     .header-btn:hover { background: #2563eb; }
+    .header-btn.editing { background: #10b981; }
+    .content.editing {
+      outline: 2px dashed #10b981;
+      outline-offset: 8px;
+    }
     @media print {
       @page {
         margin: 0;
@@ -222,6 +230,7 @@ export const printMessage = (msg: ChatMessage): void => {
 </head>
 <body>
   <div class="header-buttons">
+    <button class="header-btn" id="edit-btn" onclick="toggleEdit()">Edit</button>
     <button class="header-btn" onclick="window.print()">Print</button>
     <button class="header-btn" onclick="window.close()">Close</button>
   </div>
@@ -229,6 +238,22 @@ export const printMessage = (msg: ChatMessage): void => {
   <div class="content" id="content"></div>
 
   <script>
+    // Edit mode toggle
+    function toggleEdit() {
+      const contentDiv = document.getElementById('content');
+      const editBtn = document.getElementById('edit-btn');
+      const isEditing = contentDiv.contentEditable === 'true';
+
+      contentDiv.contentEditable = !isEditing;
+      contentDiv.classList.toggle('editing', !isEditing);
+      editBtn.classList.toggle('editing', !isEditing);
+      editBtn.textContent = isEditing ? 'Edit' : 'Done';
+
+      if (!isEditing) {
+        contentDiv.focus();
+      }
+    }
+
     // Data passed from React
     const rawText = ${escapedText};
     const imageMap = ${escapedImageMap};
@@ -286,10 +311,20 @@ export const printMessage = (msg: ChatMessage): void => {
       }
     }
 
-    // Wait for marked to load, then render
+    // Wait for marked and KaTeX to load, then render
     function init() {
-      if (typeof marked !== 'undefined') {
+      if (typeof marked !== 'undefined' && typeof renderMathInElement !== 'undefined') {
         renderContent();
+        // Render LaTeX formulas
+        renderMathInElement(document.getElementById('content'), {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false},
+            {left: '\\\\[', right: '\\\\]', display: true},
+            {left: '\\\\(', right: '\\\\)', display: false}
+          ],
+          throwOnError: false
+        });
       } else {
         setTimeout(init, 50);
       }

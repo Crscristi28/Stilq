@@ -39,7 +39,6 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  const [suggestionText, setSuggestionText] = useState<string>('');
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   
   // Streaming State (UI Only)
@@ -51,7 +50,6 @@ const App: React.FC = () => {
   const streamThinkingRef = useRef<string>("");
   const streamThinkingHeaderRef = useRef<string>("");
   const streamSourcesRef = useRef<Source[]>([]);
-  const streamSuggestionsRef = useRef<string[]>([]);
   const streamAttachmentsRef = useRef<Attachment[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const isStreamingRef = useRef<boolean>(false);
@@ -93,8 +91,7 @@ const App: React.FC = () => {
             enterToSend: true,
             defaultVoiceURI: '',
             defaultSpeechRate: 1.0,
-            language: 'system',
-            showSuggestions: true
+            language: 'system'
         };
     } catch {
         return {
@@ -102,8 +99,7 @@ const App: React.FC = () => {
             enterToSend: true,
             defaultVoiceURI: '',
             defaultSpeechRate: 1.0,
-            language: 'system',
-            showSuggestions: true
+            language: 'system'
         }; 
     }
   });
@@ -267,14 +263,6 @@ const App: React.FC = () => {
     setReplyingTo(null);
   };
 
-  const handleSuggestionClick = (text: string) => {
-    setSuggestionText(text);
-  };
-
-  const handleClearSuggestion = () => {
-    setSuggestionText('');
-  };
-
   // --- MAIN SEND HANDLER (Optimized for Smoothness & Safety) ---
   const handleSendMessage = useCallback(async (text: string, attachments: Attachment[], settings: PromptSettings, mode?: 'image' | 'research') => {
     if (!user?.uid) return;
@@ -354,7 +342,6 @@ const App: React.FC = () => {
     streamThinkingRef.current = "";
     streamThinkingHeaderRef.current = "";
     streamSourcesRef.current = [];
-    streamSuggestionsRef.current = [];
     streamAttachmentsRef.current = [];
     isStreamingRef.current = true;
 
@@ -376,7 +363,6 @@ const App: React.FC = () => {
                 prev?.thinking === streamThinkingRef.current &&
                 prev?.thinkingHeader === streamThinkingHeaderRef.current &&
                 prev?.sources === streamSourcesRef.current &&
-                prev?.suggestions === streamSuggestionsRef.current &&
                 prev?.attachments === streamAttachmentsRef.current) {
                 return prev;
             }
@@ -387,7 +373,6 @@ const App: React.FC = () => {
                 thinking: streamThinkingRef.current,
                 thinkingHeader: streamThinkingHeaderRef.current,
                 sources: streamSourcesRef.current,
-                suggestions: streamSuggestionsRef.current,
                 attachments: streamAttachmentsRef.current, // Include generated images
                 isStreaming: true,
                 timestamp: Date.now(),
@@ -416,7 +401,6 @@ const App: React.FC = () => {
       const finalResponseText = await streamChatResponse(
         messages, finalText, attachmentsForApi, modelToUse, settings,
         {
-            showSuggestions: appSettings.showSuggestions,
             userName: appSettings.userName // PASS USER NAME TO BACKEND
         },
         user?.uid,
@@ -455,15 +439,6 @@ const App: React.FC = () => {
                     streamThinkingHeaderRef.current = header.trim();
                 }
             }
-        },
-        (suggestions) => {
-            console.log("APP: Received Suggestions:", suggestions); // DEBUG LOG
-            streamSuggestionsRef.current = suggestions;
-            // Immediate update for suggestions (if they come in late stream)
-            setStreamingMessage(prev => {
-                if (!prev) return null;
-                return { ...prev, suggestions: streamSuggestionsRef.current };
-            });
         },
         // onImage - returns index immediately for inline markers
         // If backend provides storageUrl, use it; otherwise upload in background
@@ -569,7 +544,6 @@ const App: React.FC = () => {
           isStreaming: false,
           sources: streamSourcesRef.current,
           thinking: streamThinkingRef.current,
-          suggestions: streamSuggestionsRef.current, // Save suggestions to DB
           attachments: streamAttachmentsRef.current, // Save generated images
       });
 
@@ -595,7 +569,7 @@ const App: React.FC = () => {
         isStreaming: false
       });
     }
-  }, [currentSessionId, user?.uid, messages, selectedModel, replyingTo, sessions, addMessageToDb, updateMessageInDb, renameChatInDb, createNewChatInDb, setCurrentSessionId, appSettings.showSuggestions, appSettings.userName]);
+  }, [currentSessionId, user?.uid, messages, selectedModel, replyingTo, sessions, addMessageToDb, updateMessageInDb, renameChatInDb, createNewChatInDb, setCurrentSessionId, appSettings.userName]);
 
 
   const activeModelConfig = MODELS.find(m => m.id === selectedModel) || MODELS[0];
@@ -761,7 +735,6 @@ const App: React.FC = () => {
               currentMode={currentMode}
               onEdit={handleEditMessage}
               onReply={handleReply}
-              onSuggestionClick={handleSuggestionClick}
               minFooterHeight={minFooterHeight}
               user={userWithPreferredName}
               language={resolveLanguage(appSettings.language)}
@@ -775,8 +748,6 @@ const App: React.FC = () => {
                 selectedModel={selectedModel}
                 replyingTo={replyingTo}
                 onClearReply={handleClearReply}
-                initialText={suggestionText}
-                onClearInitialText={handleClearSuggestion}
                 settings={promptSettings} // PASSING GLOBAL SETTINGS
                 language={resolveLanguage(appSettings.language)} // Added prop
               />

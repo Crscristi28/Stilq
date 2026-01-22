@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Moon, Sun, Monitor, Keyboard, Mic, Database, Globe, Info,
-  Trash2, Download, Check, User, Sparkles, MessageSquare, LogOut,
+  Trash2, Download, Check, User, Sparkles, LogOut,
   Sliders, Activity, ChevronRight, ArrowLeft
 } from 'lucide-react';
 import { AppSettings, ChatSession, UserProfile, PromptSettings, ToneStyle } from '../types';
@@ -434,10 +434,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                     </select>
                                     <ChevronRight size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-400 pointer-events-none" />
                                 </div>
-                            </SettingRow>
-
-                            <SettingRow label={t('showSuggestions')} icon={MessageSquare} info={t('descSuggestions')}>
-                                <Toggle checked={settings.showSuggestions} onChange={(v) => onUpdateSettings({...settings, showSuggestions: v})} />
                             </SettingRow>
 
                             <SettingRow label={t('enterToSend')} icon={Keyboard}>

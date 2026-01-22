@@ -39,8 +39,7 @@ export interface ChatMessage {
   isStreaming?: boolean;
   timestamp: number;
   error?: boolean;
-  suggestions?: string[]; // New field for follow-up questions
-  sources?: Source[]; // New field for citations/sources
+  sources?: Source[]; // Field for citations/sources
   thinking?: string; // The internal monologue/reasoning process
   thinkingHeader?: string; // Current thinking step (extracted bold header)
 }
@@ -132,8 +131,7 @@ export interface AppSettings {
   defaultVoiceURI: string;
   defaultSpeechRate: number;
   language: string;
-  showSuggestions: boolean;
-  userName?: string; // Added user alias
+  userName?: string; // User alias
 }
 
 // --- Gemini API Types ---

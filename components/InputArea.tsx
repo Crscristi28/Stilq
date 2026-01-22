@@ -24,9 +24,9 @@ const uploadAttachment = async (
       throw new Error("Not authenticated");
     }
 
-    // Validate size (20MB limit)
-    if (base64Data.length > 28 * 1024 * 1024) {
-      throw new Error("File too large (max 20MB)");
+    // Validate size (200MB limit for videos)
+    if (base64Data.length > 280 * 1024 * 1024) {
+      throw new Error("File too large (max 200MB)");
     }
 
     const response = await fetch(UNIFIED_UPLOAD_URL, {
@@ -61,13 +61,11 @@ interface InputAreaProps {
   selectedModel: ModelId;
   replyingTo?: ChatMessage | null;
   onClearReply?: () => void;
-  initialText?: string; // New prop to populate text
-  onClearInitialText?: () => void; // Callback to clear prop after setting
   settings: PromptSettings; // NOW REQUIRED: Passed from parent (App.tsx)
   language: string;
 }
 
-const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel, replyingTo, onClearReply, initialText, onClearInitialText, settings, language }) => {
+const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel, replyingTo, onClearReply, settings, language }) => {
   const { user } = useAuth();
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -125,18 +123,6 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isMenuOpen, settingsMenuState]);
-
-  // Handle external initial text (e.g. suggestions)
-  useEffect(() => {
-    if (initialText) {
-        setInput(initialText);
-        if (onClearInitialText) onClearInitialText();
-        setTimeout(() => {
-             textareaRef.current?.focus();
-             adjustHeight();
-        }, 50);
-    }
-  }, [initialText, onClearInitialText]);
 
   const handleInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -435,7 +421,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
         </div>
         <div className="flex items-end gap-2 w-full">
             <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${isMenuOpen ? 'bg-gray-200 dark:bg-[#3d3e44] text-black dark:text-white' : 'hover:bg-gray-200 dark:hover:bg-[#3d3e44] text-gray-500 dark:text-gray-300'}`} title="Add..."><Plus size={22} className={`transition-transform duration-200 ${isMenuOpen ? 'rotate-45' : ''}`} /></button>
-            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*,application/pdf,text/plain,text/csv,.pdf,.txt,.js,.ts,.py,.java,.c,.cpp,.h,.html,.css,.json,.md" multiple />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*,video/*,application/pdf,text/plain,text/csv,.pdf,.txt,.js,.ts,.py,.java,.c,.cpp,.h,.html,.css,.json,.md" multiple />
             <textarea ref={textareaRef} value={input} onChange={handleInput} onKeyDown={handleKeyDown} placeholder={isImageGen ? t('imagePlaceholder') : t('placeholder')} className={`flex-1 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none resize-none overflow-y-auto leading-6 text-[16px] py-1.5 ${isListening ? 'animate-pulse placeholder-blue-500 dark:placeholder-blue-400' : ''}`} rows={1} style={{ height: '28px', maxHeight: '120px' }} />
             {(!input.trim() || isListening) && !hasContent && (
                 <button onClick={toggleListening} className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${isListening ? 'text-red-500 animate-pulse' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#3d3e44]'}`} title="Dictate">{isListening ? <Square size={18} fill="currentColor" /> : <Mic size={22} />}</button>

@@ -56,7 +56,6 @@ export interface MessageItemProps {
   onHandleShare: (text: string) => void;
   onToggleTTSSettings: (id: string | null) => void;
   onSaveTTSSettings: (voiceURI: string, rate: number) => void;
-  onSuggestionClick?: (text: string) => void;
   onOpenLightbox?: (src: string) => void;
 }
 
@@ -85,7 +84,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
   onHandleShare,
   onToggleTTSSettings,
   onSaveTTSSettings,
-  onSuggestionClick,
   onOpenLightbox
 }) => {
 
@@ -451,21 +449,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     </div>
                 );
             })()}
-
-            {/* Suggestions */}
-            {!msg.isStreaming && msg.suggestions && msg.suggestions.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-4 animate-fade-in">
-                    {msg.suggestions.map((suggestion: string, idx: number) => (
-                        <button
-                            key={idx}
-                            onClick={() => onSuggestionClick && onSuggestionClick(suggestion)}
-                            className="px-3 py-1.5 rounded-xl bg-transparent border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
-                        >
-                            {suggestion}
-                        </button>
-                    ))}
-                </div>
-            )}
 
             {/* Footer */}
             <div className="mt-4 pt-2 flex flex-col gap-3">

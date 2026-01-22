@@ -13,7 +13,6 @@ interface MessageListProps {
   currentMode?: 'image' | 'research' | null;
   onEdit?: (id: string, newText: string) => void;
   onReply?: (msg: ChatMessage) => void;
-  onSuggestionClick?: (text: string) => void;
   minFooterHeight: number;
   user?: UserProfile | null;
   language: string;
@@ -22,7 +21,7 @@ interface MessageListProps {
 }
 
 // --- Main MessageList Component ---
-const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, currentMode, onEdit, onReply, onSuggestionClick, minFooterHeight, user, language, sessionId, onOpenLightbox }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selectedModel, isGeneratingImage, currentMode, onEdit, onReply, minFooterHeight, user, language, sessionId, onOpenLightbox }) => {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
@@ -269,7 +268,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, selecte
                         onHandleShare={handleShare}
                         onToggleTTSSettings={handleToggleTTSSettings}
                         onSaveTTSSettings={handleSaveTTSSettings}
-                        onSuggestionClick={onSuggestionClick}
                         onOpenLightbox={onOpenLightbox}
                     />
                 )}

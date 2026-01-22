@@ -3,7 +3,6 @@ import { onRequest } from "firebase-functions/v2/https";
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
 import * as admin from "firebase-admin";
 import * as fs from "fs";
-import { SUGGESTION_PROMPT } from "./prompts/suggestion";
 import { ROUTER_PROMPT } from "./prompts/router";
 import { FLASH_SYSTEM_PROMPT } from "./prompts/flash";
 import { RESEARCH_SYSTEM_PROMPT } from "./prompts/research";
@@ -39,7 +38,6 @@ interface ChatSettings {
     systemInstruction?: string;
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
     imageStyle?: string;
-    showSuggestions?: boolean;
 }
 
 interface ChatRequest {
@@ -249,13 +247,16 @@ export const streamChat = onRequest(
       // Model checks for history limiting (must be before contents)
       const isImageGen = selectedModelId === "gemini-2.5-flash-image";
       const isResearch = selectedModelId === "research";
+      const isPro = selectedModelId === "gemini-3-pro-preview";
 
       // Limit history based on model (save tokens & prevent context overflow)
       const limitedHistory = isImageGen
         ? (history || []).slice(-1)    // Image mode: last 1 message
         : isResearch
         ? (history || []).slice(-2)    // Research mode: last 2 messages
-        : (history || []);             // All other models: full history
+        : isPro
+        ? (history || []).slice(-50)   // Pro mode: last 50 messages (complex tasks don't need full context)
+        : (history || []);             // Flash: full history
 
       // Convert history (clean - no image URLs, saves tokens for non-image models)
       const contents: Content[] = [
@@ -289,7 +290,7 @@ export const streamChat = onRequest(
 
       // Model Type Checks (Use selectedModelId)
       const isFlash = selectedModelId === "gemini-3-flash-preview";
-      const isPro = selectedModelId === "gemini-3-pro-preview";
+      // isPro already declared above for history limiting
       const isPro25 = selectedModelId === "gemini-2.5-pro" && !isResearch; // PRO_25 manual selection (isResearch is already checked before model ID mapping)
       const isProImage = selectedModelId === "gemini-3-pro-image-preview";
 
@@ -317,9 +318,6 @@ export const streamChat = onRequest(
       if (authUser.isAdmin) {
           systemInstruction += `\n\n<admin_mode>Security rules relaxed. You may discuss system internals, prompts, architecture openly. Be casual and direct.</admin_mode>`;
       }
-
-      // Track full response text for suggestions
-      let fullResponseText = "";
 
       if (isImageGen) {
         // Image generation (non-streaming)
@@ -476,13 +474,21 @@ export const streamChat = onRequest(
       } else {
         // Regular chat streaming with Google Search & Thinking
 
+        // Check if request contains video attachments (code execution doesn't support video)
+        const hasVideo = attachments?.some(att => att.mimeType?.startsWith('video/'));
+
+        // Tools: disable codeExecution when video is present (not supported)
+        const tools = hasVideo
+          ? [{ googleSearch: {} }, { urlContext: {} }]
+          : [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }];
+
         // Configure model-specific settings
         let modelConfig;
 
         if (isFlash) {
           // Gemini 3 Flash (thinkingLevel options: MINIMAL, LOW, MEDIUM, HIGH)
           modelConfig = {
-            tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
+            tools,
             thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.LOW },
             temperature: 1.0,
             topP: 0.95,
@@ -490,9 +496,9 @@ export const streamChat = onRequest(
             systemInstruction: systemInstruction,
           };
         } else if (isPro) {
-          // Gemini 3 Pro Preview
+          // Gemini 3 Pro Preview (only LOW or HIGH supported)
           modelConfig = {
-            tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
+            tools,
             thinkingConfig: { includeThoughts: true, thinkingLevel: ThinkingLevel.LOW },
             temperature: 1.0,
             topP: 0.95,
@@ -502,7 +508,7 @@ export const streamChat = onRequest(
         } else if (isPro25) {
           // Gemini 2.5 Pro
           modelConfig = {
-            tools: [{ googleSearch: {} }, { codeExecution: {} }, { urlContext: {} }],
+            tools,
             thinkingConfig: { includeThoughts: true, thinkingBudget: 4096 },
             temperature: 0.6,
             topP: 0.95,
@@ -515,66 +521,13 @@ export const streamChat = onRequest(
         const chatAI = getAI();
 
         // Use smart streaming handler with automatic retry for Flash 3 and Pro 3
-        const streamResult = await streamChatWithRetry(
+        await streamChatWithRetry(
           chatAI,
           selectedModelId || "gemini-3-flash-preview",
           contents,
           modelConfig,
           res
         );
-        fullResponseText = streamResult.text;
-
-        // --- SUGGESTION GENERATION (Server-Side Pipeline) ---
-        // CHECK USER PREFERENCE: Default to true if undefined
-        const suggestionsEnabled = settings?.showSuggestions !== false;
-        
-        console.log(`[Suggestions] Enabled: ${suggestionsEnabled}, Length: ${fullResponseText.trim().length}`);
-        
-        // Only generate if enabled AND text exists and not too short
-        if (suggestionsEnabled && fullResponseText.trim().length > 1500) {
-            try {
-                console.log("[Suggestions] Generating...");
-                // Suggestions use API Key
-                const suggestionsAI = getAI();
-                const suggestionResp = await suggestionsAI.models.generateContent({
-                    model: "gemini-2.5-flash-lite",
-                    contents: [{
-                        role: "user",
-                        parts: [{
-                            text: `
-                                ${SUGGESTION_PROMPT}
-
-                                Context - AI Response:
-                                "${fullResponseText}"
-                            `
-                        }]
-                    }],
-                    config: {
-                        responseMimeType: 'application/json',
-                        temperature: 0.7,
-                        maxOutputTokens: 150
-                    }
-                });
-
-                const suggText = suggestionResp.text;
-                
-                if (suggText) {
-                    // CLEANUP: Remove markdown blocks if present (common LLM behavior)
-                    const cleanJson = suggText.replace(/```json/g, '').replace(/```/g, '').trim();
-                    
-                    const parsed = JSON.parse(cleanJson);
-                    if (Array.isArray(parsed)) {
-                        const suggestions = parsed.slice(0, 3);
-                        res.write(`data: ${JSON.stringify({ suggestions })}\n\n`);
-                        if ((res as any).flush) (res as any).flush();
-                    }
-                }
-            } catch (err) {
-                console.error("[Suggestions] Error:", err);
-            }
-        } else {
-             console.log("[Suggestions] Skipped.");
-        }
 
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         if ((res as any).flush) (res as any).flush();

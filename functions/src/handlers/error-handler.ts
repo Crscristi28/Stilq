@@ -54,31 +54,13 @@ export async function streamWithRetry(
                 }
             }
 
-            // Log chunk details for debugging
-            if (candidates && candidates.length > 0) {
-                const finishReason = candidates[0].finishReason;
-                if (finishReason) {
-                    console.log(`[STREAM CHUNK ${chunkCount}] finishReason: ${finishReason}`);
-                }
-            } else {
-                // No candidates - log full chunk to see what's wrong
-                console.log(`[STREAM CHUNK ${chunkCount}] No candidates - Full chunk:`, JSON.stringify(chunk, null, 2));
-            }
-
             if (candidates && candidates.length > 0) {
                 const parts = candidates[0].content?.parts;
                 if (parts) {
                     for (const part of parts) {
-                        // Code execution logging
-                        if ((part as any).executableCode) {
-                            console.log(`[CODE] Executing: ${(part as any).executableCode.code?.substring(0, 100)}...`);
-                        }
-
                         // Code execution result with image
                         if ((part as any).codeExecutionResult) {
                             const codeResult = (part as any).codeExecutionResult;
-                            console.log(`[CODE] Result outcome: ${codeResult.outcome}, output length: ${codeResult.output?.length || 0}`);
-
                             const output = codeResult.output || '';
                             const base64ImageRegex = /data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
                             const imageMatch = output.match(base64ImageRegex);
@@ -92,19 +74,19 @@ export async function streamWithRetry(
                         if ((part as any).inlineData) {
                             const inlineData = (part as any).inlineData;
                             const aspectRatio = detectAspectRatio(inlineData.data);
-                            console.log(`[GRAPH] Received inline image: ${inlineData.mimeType} (${aspectRatio})`);
                             res.write(`data: ${JSON.stringify({ graph: { mimeType: inlineData.mimeType || 'image/png', data: inlineData.data, aspectRatio } })}\n\n`);
                             if ((res as any).flush) (res as any).flush();
                         }
 
                         // Thinking vs regular text
                         const isThought = (part as any).thought === true;
+                        const hasSignature = (part as any).thoughtSignature ? true : false;
                         if (isThought && part.text) {
-                            console.log(`[THINKING CHUNK] Length: ${part.text.length} | First 200 chars: "${part.text.substring(0, 200)}"`);
+                            console.log('thought');
                             res.write(`data: ${JSON.stringify({ thinking: part.text })}\n\n`);
                             if ((res as any).flush) (res as any).flush();
                         } else if (part.text) {
-                            console.log(`[TEXT CHUNK] Length: ${part.text.length} | First 200 chars: "${part.text.substring(0, 200)}"`);
+                            console.log(hasSignature ? 'text (has thought signature)' : 'text');
                             fullText += part.text;
                             res.write(`data: ${JSON.stringify({ text: part.text })}\n\n`);
                             if ((res as any).flush) (res as any).flush();

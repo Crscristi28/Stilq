@@ -15,12 +15,11 @@ export const streamChatResponse = async (
   attachments: Attachment[],
   modelId: ModelId,
   settings: PromptSettings,
-  appSettings: { showSuggestions: boolean; userName?: string },
+  appSettings: { userName?: string },
   userId: string | undefined,
   onChunk: (text: string) => void,
   onSources?: (sources: Source[]) => void,
   onThinking?: (text: string) => void,
-  onSuggestions?: (suggestions: string[]) => void,
   onImage?: (image: { mimeType: string; data: string; aspectRatio?: string; storageUrl?: string; fileUri?: string }) => Promise<number>,
   onGraph?: (graph: { mimeType: string; data: string; aspectRatio?: string }) => Promise<number>,
   onRoutedModel?: (model: string) => void,
@@ -65,7 +64,6 @@ export const streamChatResponse = async (
           systemInstruction: finalSystemInstruction,
           aspectRatio: settings.aspectRatio,
           imageStyle: settings.imageStyle,
-          showSuggestions: appSettings.showSuggestions,
           userName: appSettings.userName,
         },
       }),
@@ -148,13 +146,6 @@ export const streamChatResponse = async (
               onSources(data.sources);
             }
 
-            if (data.suggestions) {
-              console.log("GeminiService: Received Suggestions:", data.suggestions); // DEBUG LOG
-              if (onSuggestions) {
-                  onSuggestions(data.suggestions);
-              }
-            }
-
             if (data.routedModel && onRoutedModel) {
               onRoutedModel(data.routedModel);
             }
@@ -207,19 +198,6 @@ export const streamChatResponse = async (
 
     throw new Error(errorMessage);
   }
-};
-
-/**
- * Generates quick follow-up suggestions via Cloud Function.
- * Uses gemini-2.0-flash-lite for speed and low cost.
- * @deprecated - Use server-side pipeline instead. Kept for legacy compatibility only.
- */
-export const generateSuggestions = async (
-  lastUserMessage: string,
-  lastBotResponse: string
-): Promise<string[]> => {
-  // Logic deprecated in favor of server-side streaming
-  return [];
 };
 
 /**
