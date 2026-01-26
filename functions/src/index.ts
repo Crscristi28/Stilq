@@ -545,10 +545,10 @@ export const streamChat = onRequest(
   });
 
 /**
- * Unified Upload: Parallel upload to Firebase Storage + Google AI File API
- * Removes 10MB inlineData limit by using File API
+ * Get File URI: Downloads from Firebase Storage, uploads to Google AI File API
+ * Frontend uploads directly to Storage, this just gets the fileUri for Gemini
  */
-export const unifiedUpload = onRequest(
+export const getFileUri = onRequest(
   {
     cors: true,
     secrets: ["GEMINI_API_KEY"],
@@ -556,7 +556,7 @@ export const unifiedUpload = onRequest(
     cpu: 1,
     concurrency: 80,
     maxInstances: 20,
-    timeoutSeconds: 540,
+    timeoutSeconds: 300,
   },
   async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -573,70 +573,66 @@ export const unifiedUpload = onRequest(
       return;
     }
 
-    // --- AUTH VERIFICATION ---
     const authUser = await verifyAuth(req, res);
-    if (!authUser) return; // verifyAuth already sent 401 response
-    const userId = authUser.uid; // Use verified userId from token, not from request body!
+    if (!authUser) return;
+    const userId = authUser.uid;
 
     try {
-      const { fileName, mimeType, fileBufferBase64 } = req.body;
+      const { storagePath, mimeType } = req.body;
 
-      if (!fileName || !mimeType || !fileBufferBase64) {
-        res.status(400).json({ error: "Missing required fields: fileName, mimeType, fileBufferBase64" });
+      if (!storagePath || !mimeType) {
+        res.status(400).json({ error: "Missing storagePath or mimeType" });
         return;
       }
 
-      // Sanitize filename FIRST - Google AI SDK uses file path in HTTP headers (must be ASCII)
-      const timestamp = Date.now();
-      const sanitizedFileName = `${timestamp}_${fileName
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')  // Remove diacritics
-        .replace(/[^\x00-\x7F]/g, '_')}`; // Replace remaining non-ASCII with underscore
+      // SECURITY: Verify path belongs to user
+      if (!storagePath.startsWith(`users/${userId}/`)) {
+        res.status(403).json({ error: "Access denied" });
+        return;
+      }
 
-      // Decode base64 to buffer and write to temp file (use sanitized name!)
-      const buffer = Buffer.from(fileBufferBase64, 'base64');
-      const tempPath = `/tmp/${sanitizedFileName}`;
-      fs.writeFileSync(tempPath, buffer);
+      // Download from Firebase Storage (explicit bucket name)
+      const bucket = admin.storage().bucket('elenor-57bde.firebasestorage.app');
+      const file = bucket.file(storagePath);
+      const fileName = storagePath.split('/').pop() || 'file';
+      const tempPath = `/tmp/${Date.now()}_${fileName}`;
 
+      await file.download({ destination: tempPath });
+
+      // Upload to Google AI File API
       const ai = getAI();
-      const bucket = admin.storage().bucket();
-
-      // PARALLEL UPLOAD: Firebase Storage (for UI) + Google AI File API (for Gemini)
-      const [fbUploadResult, aiUploadResult] = await Promise.all([
-        // Firebase Storage upload (keeps original fileName - Firebase supports UTF-8)
-        bucket.upload(tempPath, {
-          destination: `users/${userId}/attachments/${timestamp}_${fileName}`,
-          metadata: { contentType: mimeType }
-        }),
-        // Google AI File API upload using @google/genai SDK
-        ai.files.upload({
-          file: tempPath,
-          config: {
-            mimeType: getFileApiMimeType(mimeType),
-            displayName: sanitizedFileName,
-          }
-        })
-      ]);
-
-      // Generate signed URL for Firebase Storage (permanent access)
-      const [storageUrl] = await fbUploadResult[0].getSignedUrl({
-        action: 'read',
-        expires: '03-01-2500'
+      const result = await ai.files.upload({
+        file: tempPath,
+        config: { mimeType: getFileApiMimeType(mimeType) }
       });
 
       // Cleanup temp file
       fs.unlinkSync(tempPath);
 
-      console.log(`[UnifiedUpload] Success: ${fileName} | storageUrl: ${storageUrl.substring(0, 50)}... | fileUri: ${aiUploadResult.uri}`);
+      // Wait for file to become ACTIVE (required for large files like videos)
+      const fileId = result.name!; // e.g. "files/abc123"
+      let fileState = result.state;
+      let attempts = 0;
+      const maxAttempts = 60; // 60 * 2s = 2 minutes max wait
 
-      res.json({
-        storageUrl,
-        fileUri: aiUploadResult.uri
-      });
+      while (fileState === 'PROCESSING' && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s
+        const fileInfo = await ai.files.get({ name: fileId });
+        fileState = fileInfo.state;
+        attempts++;
+        console.log(`[getFileUri] Waiting for file... state=${fileState} attempt=${attempts}`);
+      }
+
+      if (fileState !== 'ACTIVE') {
+        throw new Error(`File processing failed: state=${fileState}`);
+      }
+
+      console.log(`[getFileUri] Success: ${storagePath} -> ${result.uri}`);
+      res.json({ fileUri: result.uri });
 
     } catch (error: unknown) {
-      console.error("[UnifiedUpload] Error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Upload failed";
+      console.error("[getFileUri] Error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed";
       res.status(500).json({ error: errorMessage });
     }
   }

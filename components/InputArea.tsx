@@ -1,58 +1,46 @@
 import React, { useState, useRef, KeyboardEvent, ChangeEvent, useEffect } from 'react';
 import { ArrowUp, Plus, X, Mic, Square, FileText, Image as ImageIcon, Loader2, Upload, Paperclip, Search, SlidersHorizontal, Ratio, Palette, ChevronLeft } from 'lucide-react';
 import { Attachment, PromptSettings, ModelId, ChatMessage, AspectRatio, ImageStyle } from '../types';
-import { fileToBase64 } from '../services/geminiService';
 import { useAuth } from '../hooks/useAuth';
-import { auth } from '../firebase';
+import { auth, storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { translations, Language, TranslationKey } from '../translations';
 
-const UNIFIED_UPLOAD_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net/unifiedUpload';
+const GET_FILE_URI_URL = 'https://us-central1-elenor-57bde.cloudfunctions.net/getFileUri';
 
 /**
- * Uploads attachment via unified Cloud Function
- * Returns both storageUrl (for UI preview) and fileUri (for Gemini API)
+ * Uploads file directly to Firebase Storage, then gets fileUri from Cloud Function
+ * No more base64 over HTTP - direct storage upload with no size limits
  */
 const uploadAttachment = async (
-  base64Data: string,
-  mimeType: string,
-  originalName?: string
+  file: File,
+  userId: string
 ): Promise<{ storageUrl: string; fileUri: string }> => {
-  try {
-    // Get Firebase ID token for authentication
-    const token = await auth.currentUser?.getIdToken();
-    if (!token) {
-      throw new Error("Not authenticated");
-    }
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("Not authenticated");
 
-    // Validate size (200MB limit for videos)
-    if (base64Data.length > 280 * 1024 * 1024) {
-      throw new Error("File too large (max 200MB)");
-    }
+  // 1. Upload directly to Firebase Storage
+  const timestamp = Date.now();
+  const storagePath = `users/${userId}/attachments/${timestamp}_${file.name}`;
+  const storageRef = ref(storage, storagePath);
 
-    const response = await fetch(UNIFIED_UPLOAD_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        fileName: originalName || `file_${Date.now()}`,
-        mimeType,
-        fileBufferBase64: base64Data
-      })
-    });
+  await uploadBytes(storageRef, file);
+  const storageUrl = await getDownloadURL(storageRef);
 
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status}`);
-    }
+  // 2. Call function to get fileUri for Gemini
+  const response = await fetch(GET_FILE_URI_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ storagePath, mimeType: file.type })
+  });
 
-    const { storageUrl, fileUri } = await response.json();
-    return { storageUrl, fileUri };
-  } catch (e: unknown) {
-    console.error("Upload failed:", e);
-    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-    throw new Error(`Upload failed: ${errorMessage}`);
-  }
+  if (!response.ok) throw new Error(`Failed to get fileUri: ${response.status}`);
+
+  const { fileUri } = await response.json();
+  return { storageUrl, fileUri };
 };
 
 interface InputAreaProps {
@@ -191,33 +179,38 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
     if (e.target.files && e.target.files.length > 0) {
       const filesToProcess = Array.from(e.target.files);
       const startIndex = attachments.length;
-      const newAttachments: Attachment[] = [];
-      for (const file of filesToProcess) {
-        try {
-          const base64 = await fileToBase64(file);
-          newAttachments.push({ mimeType: file.type, data: base64, name: file.name });
-        } catch (err) {
-          console.error("Failed to read file", err);
-        }
-      }
+
+      // Create attachments with local preview (URL.createObjectURL - fast, no base64)
+      const newAttachments: Attachment[] = filesToProcess.map(file => ({
+        mimeType: file.type,
+        data: '',
+        name: file.name,
+        storageUrl: URL.createObjectURL(file), // Local preview
+        _file: file // Store File object for upload
+      }));
+
       setAttachments(prev => [...prev, ...newAttachments]);
+
+      // Mark as uploading
       const uploadingSet = new Set<number>();
       for (let i = 0; i < newAttachments.length; i++) {
         uploadingSet.add(startIndex + i);
       }
       setUploadingIndexes(prev => new Set([...prev, ...uploadingSet]));
-      newAttachments.forEach(async (att, i) => {
+
+      // Upload each file
+      filesToProcess.forEach(async (file, i) => {
         const attachmentIndex = startIndex + i;
         try {
-          const { storageUrl, fileUri } = await uploadAttachment(att.data!, att.mimeType, att.name);
-          setAttachments(prev => prev.map((a, idx) => idx === attachmentIndex ? { ...a, storageUrl, fileUri } : a));
-          setUploadingIndexes(prev => {
-            const updated = new Set(prev);
-            updated.delete(attachmentIndex);
-            return updated;
-          });
-        } catch (err: unknown) {
-          console.error("Failed to upload", att.name, err);
+          const { storageUrl, fileUri } = await uploadAttachment(file, user.uid);
+          setAttachments(prev => prev.map((a, idx) =>
+            idx === attachmentIndex
+              ? { ...a, storageUrl, fileUri, _file: undefined }
+              : a
+          ));
+        } catch (err) {
+          console.error("Failed to upload", file.name, err);
+        } finally {
           setUploadingIndexes(prev => {
             const updated = new Set(prev);
             updated.delete(attachmentIndex);
@@ -225,6 +218,7 @@ const InputArea: React.FC<InputAreaProps> = ({ onSend, isLoading, selectedModel,
           });
         }
       });
+
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };

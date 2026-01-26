@@ -133,7 +133,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                                             <img
                                                 src={att.storageUrl || `data:${att.mimeType};base64,${att.data}`}
                                                 alt="attachment"
-                                                className="h-full w-full object-contain cursor-pointer"
+                                                className="h-full w-full object-cover cursor-pointer"
                                                 onClick={() => onOpenLightbox?.(att.storageUrl || `data:${att.mimeType};base64,${att.data}`)}
                                             />
                                         </div>
