@@ -228,7 +228,7 @@ export const streamChat = onRequest(
                 try {
                     const decodedText = Buffer.from(att.data, 'base64').toString('utf-8');
                     const fileNameHeader = att.name ? `File: ${att.name}\n` : 'Attached File:\n';
-                    
+
                     parts.push({
                         text: `${fileNameHeader}\`\`\`${att.mimeType}\n${decodedText}\n\`\`\`\n`
                     });
@@ -321,13 +321,13 @@ export const streamChat = onRequest(
 
       if (isImageGen) {
         // Image generation (non-streaming)
-        
+
         // --- STYLE MODIFIER ---
         // If a style is selected, append it to the user's prompt
         if (settings?.imageStyle && settings.imageStyle !== 'none') {
             const readableStyle = settings.imageStyle.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             const stylePrompt = `\n\nStyle: ${readableStyle}, high quality, detailed.`;
-            
+
             // Find the text part in the last user message and append style
             const lastUserMsg = contents[contents.length - 1];
             if (lastUserMsg && lastUserMsg.parts) {
@@ -594,8 +594,15 @@ export const getFileUri = onRequest(
       // Download from Firebase Storage (explicit bucket name)
       const bucket = admin.storage().bucket('elenor-57bde.firebasestorage.app');
       const file = bucket.file(storagePath);
-      const fileName = storagePath.split('/').pop() || 'file';
-      const tempPath = `/tmp/${Date.now()}_${fileName}`;
+
+      // Sanitize filename - Google AI SDK uses file path in HTTP headers (must be ASCII)
+      const rawFileName = storagePath.split('/').pop() || 'file';
+      const timestamp = Date.now();
+      const sanitizedFileName = `${timestamp}_${rawFileName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')  // Remove diacritics
+        .replace(/[^\x00-\x7F]/g, '_')}`; // Replace remaining non-ASCII
+      const tempPath = `/tmp/${sanitizedFileName}`;
 
       await file.download({ destination: tempPath });
 
